@@ -1,0 +1,77 @@
+﻿@using Itsm.Models
+@{
+    ViewData["Title"] = "تقييم الفني";
+    var role = Context.Session.GetString("UserRole");
+    var criteria = RatingCriteria.Items;
+    string technician = ViewBag.Technician as string ?? "";
+    string periodLabel = ViewBag.PeriodLabel as string ?? "";
+    string evaluatorName = ViewBag.EvaluatorName as string ?? "";
+    string[] labels = { "ضعيف", "مقبول", "جيد", "جيد جداً", "ممتاز" };
+}
+
+<div dir="rtl" style="max-width: 900px;">
+    <h3 class="mb-3">تقييم الفني</h3>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-md-6"><div class="text-muted small">الفني</div><strong>@technician</strong></div>
+                <div class="col-md-6"><div class="text-muted small">دورة التقييم</div><strong>@periodLabel</strong></div>
+            </div>
+            <div class="form-text mt-2">تقييم عام لأداء الفني خلال هذه الدورة، وتقيّمه مرة واحدة فقط فيها.</div>
+        </div>
+    </div>
+
+    <form asp-action="Rate" method="post">
+        <input type="hidden" name="technician" value="@technician" />
+
+        @if (role == "Employee")
+        {
+            <div class="card shadow-sm mb-3">
+                <div class="card-header fw-bold">بياناتك</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">الاسم</label>
+                            <input type="text" name="reviewerName" value="@evaluatorName" class="form-control" maxlength="200" required />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">البريد الإلكتروني أو رقم الجوال (للتواصل)</label>
+                            <input type="text" name="reviewerContact" class="form-control" maxlength="200" required />
+                        </div>
+                    </div>
+                    <div class="form-text">يظهر اسمك مع تقييمك للجميع، أما وسيلة التواصل فلا يراها إلا مدير النظام.</div>
+                </div>
+            </div>
+        }
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-header fw-bold">قيّم كل بند من 1 (ضعيف) إلى 5 (ممتاز)</div>
+            <ul class="list-group list-group-flush">
+                @for (var i = 0; i < criteria.Length; i++)
+                {
+                    <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div><span class="text-muted">@(i + 1).</span> @criteria[i].Ar</div>
+                        <div class="btn-group" role="group">
+                            @for (var v = 1; v <= 5; v++)
+                            {
+                                <input type="radio" class="btn-check" name="scores[@i]" id="s@(i)_@(v)" value="@v" required />
+                                <label class="btn btn-outline-warning btn-sm" for="s@(i)_@(v)" title="@labels[v - 1]">@v</label>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        </div>
+
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <label class="form-label">ملاحظات (اختياري)</label>
+                <textarea name="comment" class="form-control" rows="3" maxlength="2000"></textarea>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-success">إرسال التقييم</button>
+        <a asp-action="Index" class="btn btn-secondary">إلغاء</a>
+    </form>
+</div>

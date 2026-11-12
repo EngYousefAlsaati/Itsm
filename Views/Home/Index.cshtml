@@ -1,0 +1,92 @@
+﻿@{
+    ViewData["Title"] = "تواصل معنا";
+    var userEmail = Context.Session.GetString("UserEmail");
+}
+
+<div class="container mt-4" dir="rtl">
+    <h2 class="mb-4">تواصل معنا</h2>
+
+    <div class="row g-4">
+        <div class="col-lg-5">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="mb-3">بيانات التواصل</h5>
+
+                    <div class="mb-3">
+                        <div class="text-muted small">رقم الجوال</div>
+                        <a href="tel:+966112788988" dir="ltr" class="fs-5 text-decoration-none">+966 11 278 8988</a>
+                    </div>
+
+                    <div>
+                        <div class="text-muted small">البريد الإلكتروني</div>
+                        <a href="mailto:admin@Sitcoglobal.com" class="fs-5 text-decoration-none">admin@Sitcoglobal.com</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-7">
+            <div class="card bg-dark text-white shadow-sm h-100">
+                <div class="card-body">
+                    <h5 class="mb-3 text-warning">للاستفسارات والاقتراحات</h5>
+
+                    <form id="contactForm">
+                        <input type="text" id="cName" class="form-control mb-3" placeholder="الاسم" required />
+                        <input type="email" id="cEmail" class="form-control mb-3" placeholder="البريد الإلكتروني"
+                               value="@userEmail" required />
+                        <textarea id="cMessage" class="form-control mb-3" rows="5"
+                                  placeholder="الاستفسار أو الاقتراح" required></textarea>
+                        <div class="text-center">
+                            <button type="submit" id="cBtn" class="btn btn-warning fw-bold px-4">ارسال الرسالة</button>
+                        </div>
+                        <div id="cStatus" class="mt-3 text-center"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.getElementById('contactForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            var btn = document.getElementById('cBtn');
+            var status = document.getElementById('cStatus');
+            var name = document.getElementById('cName').value;
+
+            btn.disabled = true;
+            status.className = 'mt-3 text-center text-white-50';
+            status.textContent = 'جارٍ الإرسال...';
+
+            try {
+                var res = await fetch('https://formsubmit.co/ajax/yousefalsaati0@gmail.com', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        email: document.getElementById('cEmail').value,
+                        message: document.getElementById('cMessage').value,
+                        _subject: 'استفسار جديد من نظام Itsm - ' + name,
+                        _template: 'table'
+                    })
+                });
+                var data = await res.json();
+
+                if (res.ok && (data.success === true || data.success === 'true')) {
+                    status.className = 'mt-3 text-center text-success fw-bold';
+                    status.textContent = 'تم إرسال رسالتك بنجاح، شكراً لتواصلك.';
+                    document.getElementById('cName').value = '';
+                    document.getElementById('cMessage').value = '';
+                } else {
+                    throw new Error('failed');
+                }
+            } catch (err) {
+                status.className = 'mt-3 text-center text-danger fw-bold';
+                status.textContent = 'تعذّر إرسال الرسالة، حاول مرة أخرى أو تواصل عبر الجوال.';
+            }
+            btn.disabled = false;
+        });
+    </script>
+}

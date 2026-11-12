@@ -1,0 +1,134 @@
+﻿@model Itsm.Models.Ticket
+
+@{
+    ViewData["Title"] = "إنشاء تذكرة جديدة";
+    var orgName = Context.Session.GetString("OrgName");
+    var orgLogo = Context.Session.GetString("OrgLogo");
+    var accountEmail = Context.Session.GetString("UserEmail");
+    var projects = ViewBag.Projects as List<SelectListItem> ?? new List<SelectListItem>();
+    bool noProjects = ViewBag.NoProjects is true;
+}
+
+<div class="container mt-4" dir="rtl">
+    <h2>إنشاء طلب خدمة جديد</h2>
+    <hr />
+    <div class="row">
+        <div class="col-lg-9">
+            @if (noProjects)
+            {
+                <div class="alert alert-warning">
+                    <strong>لا يمكن إنشاء تذكرة الآن.</strong>
+                    لا يوجد مشروع جارٍ مسجّل لجهتك في النظام. تواصل مع مدير النظام لتسجيل مشروعك، ثم أعد المحاولة.
+                </div>
+                <a asp-action="Index" class="btn btn-secondary">العودة للقائمة</a>
+            }
+            else
+            {
+                <form asp-action="Create" enctype="multipart/form-data" method="post">
+                    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+                    <!-- بيانات مقدم الطلب: الجهة والبريد من حساب الموظف تلقائياً -->
+                    <div class="card p-3 mb-3 shadow-sm">
+                        <h5 class="mb-3" style="color: var(--green-mid);">بيانات مقدم الطلب</h5>
+
+                        <div class="row g-3 mb-2">
+                            <div class="col-md-6">
+                                <div class="text-muted small mb-1">الجهة</div>
+                                <div class="d-flex align-items-center gap-2">
+                                    @if (!string.IsNullOrEmpty(orgLogo))
+                                    {
+                                        <span class="bg-white border rounded p-1">
+                                            <img src="~/images/orgs/@orgLogo" alt="@orgName" style="max-height:32px;max-width:110px;" />
+                                        </span>
+                                    }
+                                    <strong>@(string.IsNullOrEmpty(orgName) ? "غير محددة" : orgName)</strong>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="text-muted small mb-1">البريد الإلكتروني</div>
+                                <strong dir="ltr">@accountEmail</strong>
+                            </div>
+                        </div>
+                        <div class="form-text mb-3">تُسجَّل جهتك وبريدك تلقائياً من حسابك، ولا حاجة لاختيارهما.</div>
+
+                        <div class="mb-3">
+                            <label asp-for="EmployeeName" class="form-label">اسم الموظف</label>
+                            <input asp-for="EmployeeName" class="form-control" placeholder="أدخل اسمك الثلاثي" />
+                            <span asp-validation-for="EmployeeName" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-1">
+                            <label asp-for="MobileNumber" class="form-label">رقم الجوال</label>
+                            <input asp-for="MobileNumber" class="form-control" placeholder="05xxxxxxxx" />
+                            <span asp-validation-for="MobileNumber" class="text-danger"></span>
+                        </div>
+                    </div>
+
+                    <!-- المشروع: إلزامي، من مشاريع عميل الموظف الجارية -->
+                    <div class="mb-3">
+                        <label class="form-label">المشروع</label>
+                        <select name="projectId" class="form-select" required>
+                            <option value="">-- اختر المشروع --</option>
+                            @foreach (var p in projects)
+                            {
+                                <option value="@p.Value" selected="@p.Selected">@p.Text</option>
+                            }
+                        </select>
+                        <div class="form-text">لكل مشروع اتفاقية مستوى خدمة خاصة به، ويحدد مدير الاستقبال مستوى التأثير عند قبول الطلب.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Title" class="form-label">عنوان الطلب</label>
+                        <input asp-for="Title" class="form-control" />
+                        <span asp-validation-for="Title" class="text-danger"></span>
+                    </div>
+
+                    <!-- وصف المشكلة مع زر الذكاء الاصطناعي المخصص له وحده -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label asp-for="Description" class="form-label mb-0">وصف المشكلة</label>
+                            <button type="button" id="aiAssistBtn" class="btn btn-sm btn-outline-secondary">
+                                ✨ مساعدة الذكاء الاصطناعي للصياغة
+                            </button>
+                        </div>
+                        <textarea asp-for="Description" id="descriptionBox" class="form-control" rows="4" placeholder="اكتب ملاحظات بسيطة وسيقوم الذكاء الاصطناعي بتحسين صياغة الوصف..."></textarea>
+                        <span asp-validation-for="Description" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">المرفقات (صور، مستندات)</label>
+                        <input type="file" name="attachments" multiple class="form-control"
+                               accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt" />
+                        <div class="form-text">حتى 5 ملفات، بحجم أقصى 10 ميجابايت للملف (صور، PDF، Word، Excel، نص).</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success">حفظ وإرسال التذكرة</button>
+                    <a asp-action="Index" class="btn btn-secondary">العودة للقائمة</a>
+                </form>
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.getElementById('aiAssistBtn').addEventListener('click', function() {
+            const descBox = document.getElementById('descriptionBox');
+            let currentText = descBox.value.trim();
+            if (!currentText) {
+                alert('الرجاء كتابة تفاصيل أولية للمشكلة في حقل الوصف ليقوم الذكاء الاصطناعي بصياغتها.');
+                return;
+            }
+
+            let btn = this;
+            btn.innerText = 'جاري تحسين الوصف...';
+            btn.disabled = true;
+
+            setTimeout(() => {
+                descBox.value = `[وصف محرر بالذكاء الاصطناعي]\n- تفاصيل المشكلة: ${currentText}\n- الحالة التقنية: تتطلب الفحص والتدخل الفني.\n- الأثر: يؤثر على سير العمل ويستوجب المعالجة وفق اتفاقية مستوى الخدمة SLA.`;
+                btn.innerText = '✨ مساعدة الذكاء الاصطناعي للصياغة';
+                btn.disabled = false;
+            }, 800);
+        });
+    </script>
+}

@@ -1,0 +1,211 @@
+﻿@model IEnumerable<Itsm.Models.Ticket>
+@using Itsm.Models
+@{
+    ViewData["Title"] = "قائمة التذاكر";
+    var role = Context.Session.GetString("UserRole");
+    var isEmployee = role == "Employee";
+
+    string q = ViewBag.Q as string ?? "";
+    string? qRoute = string.IsNullOrEmpty(q) ? null : q;
+    var fStatus = ViewBag.Status as TicketStatus?;
+    var fRisk = ViewBag.Risk as RiskLevel?;
+    int pageNo = ViewBag.Page;
+    int totalPages = ViewBag.TotalPages;
+    int total = ViewBag.Total;
+
+    string Span(TimeSpan ts)
+    {
+        ts = ts.Duration();
+        var days = (int)ts.TotalDays;
+        return days > 0 ? $"{days} يوم {ts.Hours} ساعة" : $"{(int)ts.TotalHours} ساعة {ts.Minutes} دقيقة";
+    }
+
+    (string Text, string Css, bool Live) Sla(Ticket t)
+    {
+        if (t.Status == TicketStatus.Rejected) return ("—", "bg-light text-dark", false);
+
+        if (t.Status == TicketStatus.PendingApproval || t.SlaStartTime == null || t.SlaDeadline == null)
+            return ("لم يبدأ بعد", "bg-secondary", false);
+
+        if (t.Status == TicketStatus.PendingValidation)
+        {
+            return isEmployee
+                ? ("قيد المعالجة", "bg-info text-dark", false)
+                : ("أُوقف العداد — بانتظار الاعتماد", "bg-warning text-dark", false);
+        }
+
+        if (t.Status == TicketStatus.Closed)
+        {
+            var stopped = t.SlaStoppedAt ?? t.ClosedAt ?? t.SlaDeadline.Value;
+            var taken = Span(stopped - t.SlaStartTime.Value);
+            return stopped <= t.SlaDeadline.Value
+                ? ($"حُلّت ضمن الوقت ({taken})", "bg-success", false)
+                : ($"حُلّت متأخرة بـ {Span(stopped - t.SlaDeadline.Value)}", "bg-danger", false);
+        }
+
+        var remaining = t.SlaDeadline.Value - DateTime.Now;
+        var totalSpan = t.SlaDeadline.Value - t.SlaStartTime.Value;
+        if (remaining < TimeSpan.Zero) return ($"تجاوزت المهلة بـ {Span(remaining)}", "bg-danger", true);
+        if (remaining.TotalMinutes < totalSpan.TotalMinutes * 0.25) return ($"متبقي {Span(remaining)}", "bg-warning text-dark", true);
+        return ($"متبقي {Span(remaining)}", "bg-success", true);
+    }
+}
+
+<div dir="rtl">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">قائمة التذاكر</h3>
+        @if (isEmployee)
+        {
+            <a asp-action="Create" class="btn btn-primary">+ إنشاء تذكرة جديدة</a>
+        }
+    </div>
+
+    @* ---------- البحث والفلترة ---------- *@
+    <form method="get" asp-action="Index" class="row g-2 mb-3">
+        <div class="col-md-4">
+            <input name="q" value="@q" class="form-control" placeholder="بحث بالرقم أو العنوان أو الوصف أو الفني أو الجهة" />
+        </div>
+        <div class="col-md-3">
+            <select name="status" class="form-select">
+                <option value="">كل الحالات</option>
+                @foreach (var s in Enum.GetValues<TicketStatus>())
+                {
+                    if (isEmployee && s == TicketStatus.PendingValidation) { continue; }
+                    <option value="@((int)s)" selected="@(fStatus == s)">@TicketText.Status(s)</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3">
+            <select name="risk" class="form-select">
+                <option value="">كل مستويات التأثير</option>
+                @foreach (var r in Enum.GetValues<RiskLevel>())
+                {
+                    <option value="@((int)r)" selected="@(fRisk == r)">@TicketText.Risk(r)</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2 d-flex gap-2">
+            <button type="submit" class="btn btn-dark flex-fill">بحث</button>
+            <a asp-action="Index" class="btn btn-outline-secondary">مسح</a>
+        </div>
+    </form>
+
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="text-muted small">عدد النتائج: @total</div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-success btn-sm" asp-action="ExportExcel" asp-route-q="@qRoute" asp-route-status="@fStatus" asp-route-risk="@fRisk">📥 تصدير Excel</a>
+            <a class="btn btn-outline-danger btn-sm" target="_blank" asp-action="Report" asp-route-q="@qRoute" asp-route-status="@fStatus" asp-route-risk="@fRisk">🖨️ تقرير PDF / طباعة</a>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped text-center align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th>رقم التذكرة</th>
+                    <th>عنوان الطلب</th>
+                    @if (!isEmployee)
+                    {
+                        <th>الموظف</th>
+                        <th>الجهة</th>
+                    }
+                    <th>المشروع</th>
+                    <th>مستوى التأثير</th>
+                    <th>الحالة</th>
+                    <th>الفني</th>
+                    <th>SLA</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in Model)
+                {
+                    var sla = Sla(t);
+                    <tr>
+                        <td>@t.Id</td>
+                        <td class="text-start">@t.Title</td>
+                        @if (!isEmployee)
+                        {
+                            <td>@t.EmployeeId</td>
+                            <td>@(string.IsNullOrEmpty(t.Organization) ? "—" : t.Organization)</td>
+                        }
+                        <td class="small">@(t.Project == null ? "—" : t.Project.ProjectNumber)</td>
+                        <td><span class="badge @TicketText.RiskCss(t.Risk)">@TicketText.Risk(t.Risk)</span></td>
+                        <td><span class="badge @TicketText.StatusCss(t.Status, role)">@TicketText.StatusFor(t.Status, role)</span></td>
+                        <td class="fw-bold text-primary">
+                            @(string.IsNullOrEmpty(t.AssignedEngineerId) ? "لم يتم التوجيه بعد" : t.AssignedEngineerId)
+                        </td>
+                        <td>
+                            <span class="badge @sla.Css sla-timer"
+                                  data-live="@(sla.Live ? "1" : "0")"
+                                  data-deadline="@(sla.Live ? t.SlaDeadline!.Value.ToString("s") : "")"
+                                  data-start="@(sla.Live ? t.SlaStartTime!.Value.ToString("s") : "")">@sla.Text</span>
+                        </td>
+                        <td>
+                            <a asp-action="Details" asp-route-id="@t.Id" class="btn btn-info btn-sm text-white">التفاصيل</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="text-muted text-center py-4">لا توجد تذاكر مطابقة.</div>
+    }
+
+    @* ---------- ترقيم الصفحات ---------- *@
+    @if (totalPages > 1)
+    {
+        <nav>
+            <ul class="pagination justify-content-center">
+                <li class="page-item @(pageNo == 1 ? "disabled" : "")">
+                    <a class="page-link" asp-action="Index" asp-route-pageNo="@(pageNo - 1)"
+                       asp-route-q="@qRoute" asp-route-status="@fStatus" asp-route-risk="@fRisk">السابق</a>
+                </li>
+                @for (var i = 1; i <= totalPages; i++)
+                {
+                    <li class="page-item @(i == pageNo ? "active" : "")">
+                        <a class="page-link" asp-action="Index" asp-route-pageNo="@i"
+                           asp-route-q="@qRoute" asp-route-status="@fStatus" asp-route-risk="@fRisk">@i</a>
+                    </li>
+                }
+                <li class="page-item @(pageNo == totalPages ? "disabled" : "")">
+                    <a class="page-link" asp-action="Index" asp-route-pageNo="@(pageNo + 1)"
+                       asp-route-q="@qRoute" asp-route-status="@fStatus" asp-route-risk="@fRisk">التالي</a>
+                </li>
+            </ul>
+        </nav>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        // عدّاد SLA الحيّ: يحدّث التذاكر الجارية فقط كل 30 ثانية
+        (function() {
+            function fmt(ms) {
+                var m = Math.floor(Math.abs(ms) / 60000);
+                var d = Math.floor(m / 1440);
+                if (d > 0) return d + ' يوم ' + Math.floor((m % 1440) / 60) + ' ساعة';
+                return Math.floor(m / 60) + ' ساعة ' + (m % 60) + ' دقيقة';
+            }
+            function tick() {
+                document.querySelectorAll('.sla-timer[data-live="1"]').forEach(function(el) {
+                    var due = new Date(el.dataset.deadline).getTime();
+                    var start = new Date(el.dataset.start).getTime();
+                    if (isNaN(due) || isNaN(start)) { return; }
+                    var rem = due - Date.now();
+                    var css, text;
+                    if (rem < 0) { css = 'bg-danger'; text = 'تجاوزت المهلة بـ ' + fmt(rem); }
+                    else if (rem < (due - start) * 0.25) { css = 'bg-warning text-dark'; text = 'متبقي ' + fmt(rem); }
+                    else { css = 'bg-success'; text = 'متبقي ' + fmt(rem); }
+                    el.className = 'badge sla-timer ' + css;
+                    el.textContent = text;
+                });
+            }
+            tick();
+            setInterval(tick, 30000);
+        })();
+    </script>
+}

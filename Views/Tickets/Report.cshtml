@@ -1,0 +1,127 @@
+﻿@model IEnumerable<Itsm.Models.Ticket>
+@using Itsm.Models
+@{
+    Layout = null;
+    var user = Context.Session.GetString("UserEmail");
+    var role = Context.Session.GetString("UserRole");
+    string filters = ViewBag.Filters as string ?? "كل التذاكر";
+
+    int total = Model.Count();
+    int closed = Model.Count(t => t.Status == TicketStatus.Closed);
+    int rejected = Model.Count(t => t.Status == TicketStatus.Rejected);
+    int open = total - closed - rejected;
+}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>تقرير التذاكر</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <style>
+            body {
+                background: #fff;
+                color: #000;
+                font-size: 12px;
+            }
+
+            .band {
+                background: #2f3031;
+                color: #fff;
+                padding: 8px 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            table {
+                font-size: 11px;
+            }
+
+            th {
+                background: #e9ecef !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            @@page {
+                size: A4 landscape;
+                margin: 10mm;
+            }
+
+            @@media print {
+                .no-print {
+                    display: none !important;
+                }
+            }
+    </style>
+    <script src="~/js/i18n.js"></script>
+</head>
+<body>
+    <div class="no-print bg-light border-bottom p-2 text-center">
+        <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ طباعة / حفظ كـ PDF</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="window.close()">إغلاق</button>
+        <span class="text-muted small ms-2">في نافذة الطباعة اختر الوجهة «Save as PDF» أو «حفظ كـ PDF».</span>
+    </div>
+
+    <div class="band">
+        <img src="~/images/SitcoLogo.png" alt="SITCO" height="44" />
+        <div class="text-center">
+            <div class="fs-5 fw-bold">تقرير التذاكر</div>
+            <div class="small">@filters</div>
+        </div>
+        <div class="small text-start">
+            <div>@DateTime.Now.ToString("yyyy-MM-dd HH:mm")</div>
+            <div>@user — @TicketText.Role(role)</div>
+        </div>
+    </div>
+
+    <div class="container-fluid mt-3">
+        <div class="row text-center mb-3 g-2">
+            <div class="col"><div class="border rounded p-2"><div class="fs-5 fw-bold">@total</div>إجمالي التذاكر</div></div>
+            <div class="col"><div class="border rounded p-2"><div class="fs-5 fw-bold">@closed</div>مغلقة</div></div>
+            <div class="col"><div class="border rounded p-2"><div class="fs-5 fw-bold">@open</div>غير منجزة</div></div>
+            <div class="col"><div class="border rounded p-2"><div class="fs-5 fw-bold">@rejected</div>مرفوضة</div></div>
+        </div>
+
+        <table class="table table-bordered table-sm text-center align-middle">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>العنوان</th>
+                    <th>الموظف</th>
+                    <th>الخطورة</th>
+                    <th>الحالة</th>
+                    <th>الفني</th>
+                    <th>تاريخ الإنشاء</th>
+                    <th>نتيجة SLA</th>
+                    <th>التقييم</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in Model)
+                {
+                    <tr>
+                        <td>@t.Id</td>
+                        <td class="text-start">@t.Title</td>
+                        <td>@t.EmployeeId</td>
+                        <td>@TicketText.Risk(t.Risk)</td>
+                        <td>@TicketText.Status(t.Status)</td>
+                        <td>@(string.IsNullOrEmpty(t.AssignedEngineerId) ? "—" : t.AssignedEngineerId)</td>
+                        <td>@t.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                        <td>@TicketText.SlaResult(t)</td>
+                        <td>@TicketText.Stars(t.Rating)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        @if (!Model.Any())
+        {
+            <div class="text-center text-muted py-4">لا توجد تذاكر مطابقة.</div>
+        }
+    </div>
+</body>
+</html>

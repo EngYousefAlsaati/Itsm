@@ -1,0 +1,440 @@
+﻿@model Itsm.Models.Ticket
+@using Itsm.Models
+
+@{
+    ViewData["Title"] = "تفاصيل التذكرة";
+    var role = Context.Session.GetString("UserRole");
+    var userEmail = Context.Session.GetString("UserEmail");
+    var activities = ViewBag.Activities as List<TicketActivity> ?? new List<TicketActivity>();
+    var slaLevels = ViewBag.SlaLevels as List<ProjectSla> ?? new List<ProjectSla>();
+    var technicians = ViewBag.Technicians as List<string> ?? new List<string>();
+
+    var isVendor = role == "Vendor";
+    var isAdmin = role == "Admin";
+    var isEmployee = role == "Employee";
+    var isManager = isVendor || isAdmin;
+    var isMyTask = role == "Technician"
+                   && string.Equals(Model.AssignedEngineerId, userEmail, StringComparison.OrdinalIgnoreCase);
+    var canResolve = isMyTask && (Model.Status == TicketStatus.Approved || Model.Status == TicketStatus.InProgress);
+
+    var slaLive = (Model.Status == TicketStatus.Approved || Model.Status == TicketStatus.InProgress)
+                  && Model.SlaStartTime.HasValue && Model.SlaDeadline.HasValue;
+    var showReport = Model.Status == TicketStatus.Closed
+                     || (Model.Status == TicketStatus.PendingValidation && (isManager || isMyTask));
+
+    string ChannelOf(TicketActivity a)
+    {
+        if (!string.IsNullOrEmpty(a.Channel)) return a.Channel;
+        return a.ActorRole == "Employee" ? "Employee" : a.ActorRole == "Technician" ? "Technician" : "Internal";
+    }
+
+    string Span(TimeSpan ts)
+    {
+        ts = ts.Duration();
+        return $"{(int)ts.TotalHours} ساعة {ts.Minutes} دقيقة";
+    }
+}
+
+<div dir="rtl">
+    <h3>تفاصيل التذكرة رقم: @Model.Id</h3>
+    <hr />
+
+    @* ---------- بيانات التذكرة ---------- *@
+    <div class="card shadow-sm p-4 mb-4">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">عنوان الطلب:</dt>
+            <dd class="col-sm-9">@Model.Title</dd>
+
+            <dt class="col-sm-3">الوصف:</dt>
+            <dd class="col-sm-9" style="white-space:pre-wrap">@Model.Description</dd>
+
+            <dt class="col-sm-3">الموظف:</dt>
+            <dd class="col-sm-9">@Model.EmployeeId</dd>
+
+            <dt class="col-sm-3">الجهة:</dt>
+            <dd class="col-sm-9">@(string.IsNullOrEmpty(Model.Organization) ? "—" : Model.Organization)</dd>
+
+            <dt class="col-sm-3">المشروع:</dt>
+            <dd class="col-sm-9">@(Model.Project == null ? "—" : Model.Project.ProjectNumber + " — " + Model.Project.Name)</dd>
+
+            <dt class="col-sm-3">مستوى التأثير:</dt>
+            <dd class="col-sm-9">
+                <span class="badge @TicketText.RiskCss(Model.Risk)">@(Model.Risk == RiskLevel.Unset ? "يحدده مدير الاستقبال عند القبول" : TicketText.Risk(Model.Risk))</span>
+            </dd>
+
+            <dt class="col-sm-3">حالة التذكرة:</dt>
+            <dd class="col-sm-9">
+                <span class="badge @TicketText.StatusCss(Model.Status, role)">@TicketText.StatusFor(Model.Status, role)</span>
+            </dd>
+
+            <dt class="col-sm-3">وقت الإنشاء:</dt>
+            <dd class="col-sm-9">@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</dd>
+
+            @if (isManager && Model.ResponseDeadline.HasValue && Model.DecidedAt.HasValue && Model.Status != TicketStatus.Rejected)
+            {
+                var met = Model.DecidedAt.Value <= Model.ResponseDeadline.Value;
+                <dt class="col-sm-3">زمن الاستجابة:</dt>
+                <dd class="col-sm-9">
+                    قُبلت التذكرة بعد <strong>@Span(Model.DecidedAt.Value - Model.CreatedAt)</strong>
+                    (المطلوب خلال @Span(Model.ResponseDeadline.Value - Model.CreatedAt))
+                    @if (met)
+                    {
+                        <span class="badge bg-success">ضمن الاتفاقية</span>
+                    }
+                    else
+                    {
+
+                        <span class="badge bg-danger">تجاوز زمن الاستجابة</span>
+                    }
+                </dd>
+            }
+
+            @if (Model.SlaStartTime.HasValue && Model.Status != TicketStatus.PendingApproval && Model.Status != TicketStatus.Rejected)
+            {
+                <dt class="col-sm-3">بدء عداد الـ SLA:</dt>
+                <dd class="col-sm-9">@Model.SlaStartTime.Value.ToString("yyyy-MM-dd HH:mm")</dd>
+
+                <dt class="col-sm-3">موعد انتهاء الـ SLA:</dt>
+                <dd class="col-sm-9 text-danger fw-bold">@Model.SlaDeadline?.ToString("yyyy-MM-dd HH:mm")</dd>
+            }
+
+            @if (Model.SlaStoppedAt.HasValue && (Model.Status == TicketStatus.Closed || (Model.Status == TicketStatus.PendingValidation && !isEmployee)))
+            {
+                <dt class="col-sm-3">إيقاف عداد الـ SLA:</dt>
+                <dd class="col-sm-9">@Model.SlaStoppedAt.Value.ToString("yyyy-MM-dd HH:mm")</dd>
+            }
+
+            @if (!string.IsNullOrEmpty(Model.AssignedEngineerId))
+            {
+                <dt class="col-sm-3">الفني المسؤول عن الحل:</dt>
+                <dd class="col-sm-9 text-success fw-bold">@Model.AssignedEngineerId</dd>
+            }
+        </dl>
+    </div>
+
+    @* ---------- حالة مهلة SLA ---------- *@
+    @if (slaLive)
+    {
+        <div id="slaBox" class="alert alert-success d-flex justify-content-between align-items-center mb-4"
+             data-deadline="@(Model.SlaDeadline!.Value.ToString("s"))"
+             data-start="@(Model.SlaStartTime!.Value.ToString("s"))">
+            <div>
+                <div id="slaTitle" class="fw-bold"></div>
+                <div id="slaNote" class="small"></div>
+            </div>
+            <div id="slaTime" class="fs-3 fw-bold" dir="ltr"></div>
+        </div>
+
+        <script>
+                (function() {
+                    var box = document.getElementById('slaBox');
+                    if (!box) { return; }
+                    var due = new Date(box.dataset.deadline).getTime();
+                    var start = new Date(box.dataset.start).getTime();
+                    var title = document.getElementById('slaTitle');
+                    var note = document.getElementById('slaNote');
+                    var time = document.getElementById('slaTime');
+
+                    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+                    function fmt(ms) {
+                        var s = Math.floor(Math.abs(ms) / 1000);
+                        var d = Math.floor(s / 86400);
+                        var h = Math.floor((s % 86400) / 3600);
+                        var m = Math.floor((s % 3600) / 60);
+                        var sec = s % 60;
+                        return (d > 0 ? d + ' يوم ' : '') + pad(h) + ':' + pad(m) + ':' + pad(sec);
+                    }
+
+                    function tick() {
+                        var rem = due - Date.now();
+                        var total = due - start;
+                        var cls = 'd-flex justify-content-between align-items-center mb-4 alert ';
+                        if (rem < 0) {
+                            box.className = cls + 'alert-danger';
+                            title.textContent = '⚠️ تجاوزت التذكرة مهلة SLA';
+                            note.textContent = 'ما زالت التذكرة مفتوحة والفني يواصل معالجتها، ويستمر العدّاد في احتساب مدة التأخير حتى الحل.';
+                            time.textContent = '+' + fmt(rem);
+                        } else if (rem < total * 0.25) {
+                            box.className = cls + 'alert-warning';
+                            title.textContent = '⏳ اقتربت مهلة SLA من الانتهاء';
+                            note.textContent = 'الوقت المتبقي لحل التذكرة ضمن المهلة.';
+                            time.textContent = fmt(rem);
+                        } else {
+                            box.className = cls + 'alert-success';
+                            title.textContent = '✅ التذكرة ضمن مهلة SLA';
+                            note.textContent = 'الوقت المتبقي لحل التذكرة ضمن المهلة.';
+                            time.textContent = fmt(rem);
+                        }
+                    }
+
+                    tick();
+                    setInterval(tick, 1000);
+                })();
+        </script>
+    }
+    else if (Model.Status == TicketStatus.PendingValidation && !isEmployee)
+    {
+        <div class="alert alert-warning mb-4">
+            ⏸️ <strong>توقف عدّاد SLA</strong> — أرسل الفني الحل وبانتظار اعتماد مدير الاستقبال.
+        </div>
+    }
+    else if (Model.Status == TicketStatus.Closed && Model.SlaDeadline.HasValue && (Model.SlaStoppedAt ?? Model.ClosedAt).HasValue)
+    {
+        var stoppedAt = (Model.SlaStoppedAt ?? Model.ClosedAt)!.Value;
+        if (stoppedAt > Model.SlaDeadline.Value)
+        {
+            var over = stoppedAt - Model.SlaDeadline.Value;
+            <div class="alert alert-warning mb-4">
+                ⏱️ حُلّت التذكرة بعد انتهاء مهلة SLA بـ
+                <strong>@((int)over.TotalHours) ساعة @over.Minutes دقيقة</strong>، وقد سُجّل هذا التأخير.
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-success mb-4">✅ حُلّت التذكرة ضمن مهلة SLA.</div>
+        }
+    }
+
+    @if (isEmployee && Model.Status == TicketStatus.Closed)
+    {
+        <div class="alert alert-success mb-4 fw-bold">✅ تم حل المشكلة.</div>
+    }
+
+    @if (Model.Status == TicketStatus.Rejected)
+    {
+        <div class="alert alert-danger mb-4">
+            <strong>تم رفض التذكرة.</strong>
+            @if (!string.IsNullOrWhiteSpace(Model.RejectionReason))
+            {
+                <div style="white-space:pre-wrap">السبب: @Model.RejectionReason</div>
+            }
+        </div>
+    }
+
+    @* ---------- تقرير الفني ---------- *@
+    @if (showReport)
+    {
+        <div class="card @(Model.Status == TicketStatus.Closed ? "border-success" : "border-warning") shadow-sm mb-4">
+            <div class="card-header fw-bold">تقرير الفني @(Model.Status == TicketStatus.PendingValidation ? "(بانتظار اعتماد مدير الاستقبال)" : "")</div>
+            <div class="card-body">
+                <div class="fw-bold">الحل:</div>
+                <p style="white-space:pre-wrap">@Model.Solution</p>
+                @if (!string.IsNullOrWhiteSpace(Model.TechnicianNotes))
+                {
+                    <div class="fw-bold">ملاحظات الفني:</div>
+                    <p style="white-space:pre-wrap">@Model.TechnicianNotes</p>
+                }
+            </div>
+        </div>
+    }
+
+    @* ---------- مدير الاستقبال: قبول أو رفض التذكرة ---------- *@
+    @if (isVendor && Model.Status == TicketStatus.PendingApproval)
+    {
+        <div class="card mb-4 p-4 border-primary shadow-sm">
+            <h5 class="mb-3">قرار مدير الاستقبال</h5>
+
+            <form asp-action="Approve" method="post" class="row g-3 mb-4">
+                <input type="hidden" name="id" value="@Model.Id" />
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">مستوى التأثير (يحدد مهلة SLA من اتفاقية المشروع)</label>
+                    <select name="level" class="form-select" required>
+                        <option value="">-- اختر مستوى التأثير --</option>
+                        @foreach (var s in slaLevels)
+                        {
+                            <option value="@((int)s.Level)">@SlaDefaults.LevelAr(s.Level) (@SlaDefaults.LevelEn(s.Level)) — الاستجابة خلال @SlaDefaults.Duration(s.ResponseMinutes) والحل خلال @SlaDefaults.Duration(s.ResolutionMinutes)</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">الفني / المهندس المختص</label>
+                    <select name="technicianEmail" class="form-select" required>
+                        <option value="">-- اختر الفني --</option>
+                        @foreach (var tech in technicians)
+                        {
+                            <option value="@tech">@tech</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-12">
+                    <button type="submit" class="btn btn-success fw-bold">قبول التذكرة وتوجيه الفني (يبدأ عداد SLA)</button>
+                </div>
+            </form>
+
+            <form asp-action="Reject" method="post">
+                <input type="hidden" name="id" value="@Model.Id" />
+                <label class="form-label fw-bold">رفض التذكرة (السبب مطلوب)</label>
+                <textarea name="reason" class="form-control mb-2" rows="2" required placeholder="اكتب سبب الرفض ليظهر للموظف"></textarea>
+                <button type="submit" class="btn btn-danger fw-bold"
+                        onclick="return confirm('تأكيد رفض التذكرة؟');">
+                    رفض التذكرة
+                </button>
+            </form>
+        </div>
+    }
+
+    @* ---------- مدير الاستقبال: اعتماد حل الفني ---------- *@
+    @if (isVendor && Model.Status == TicketStatus.PendingValidation)
+    {
+        <div class="card mb-4 p-4 border-warning shadow-sm">
+            <h5 class="mb-3">اعتماد حل الفني</h5>
+            <p class="text-muted">راجع تقرير الفني أعلاه. باعتماد الحل تُغلق التذكرة ويظهر للموظف «تم حل المشكلة»، أو أعِدها للفني مع السبب فيستأنف العدّاد.</p>
+
+            <div class="d-flex flex-wrap gap-3 align-items-start">
+                <form asp-action="ApproveSolution" method="post" class="m-0">
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <button type="submit" class="btn btn-success fw-bold"
+                            onclick="return confirm('اعتماد الحل وإغلاق التذكرة؟');">
+                        ✔ اعتماد الحل
+                    </button>
+                </form>
+
+                <form asp-action="ReturnSolution" method="post" class="flex-grow-1 m-0">
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <textarea name="reason" class="form-control mb-2" rows="2" required placeholder="سبب إرجاع الحل للفني"></textarea>
+                    <button type="submit" class="btn btn-outline-danger fw-bold">↩ إرجاع للفني</button>
+                </form>
+            </div>
+        </div>
+    }
+
+    @if (isAdmin && (Model.Status == TicketStatus.PendingApproval || Model.Status == TicketStatus.PendingValidation))
+    {
+        <div class="alert alert-light border mb-4">
+            قبول التذاكر ورفضها وتوجيه الفني واعتماد الحلول من صلاحية <strong>مدير الاستقبال</strong> وحده.
+        </div>
+    }
+
+    @* ---------- الفني: تم حل المشكلة ---------- *@
+    @if (canResolve)
+    {
+        <div class="card mb-4 p-4 border-primary shadow-sm">
+            <h5 class="mb-3">تم حل المشكلة</h5>
+            <div class="alert alert-info py-2">بإرسال التقرير يتوقف عدّاد SLA وتنتقل التذكرة إلى مدير الاستقبال لاعتماد الحل.</div>
+
+            <form asp-action="Resolve" method="post" enctype="multipart/form-data">
+                <input type="hidden" name="id" value="@Model.Id" />
+
+                <label class="form-label fw-bold">تقرير حل المشكلة</label>
+                <textarea name="solution" class="form-control mb-3" rows="4" required></textarea>
+
+                <label class="form-label fw-bold">ملاحظات (اختياري)</label>
+                <textarea name="technicianNotes" class="form-control mb-3" rows="2"></textarea>
+
+                <label class="form-label fw-bold">مرفقات / صور توضيحية (اختياري)</label>
+                <input type="file" name="attachments" multiple class="form-control mb-3"
+                       accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt" />
+
+                <button type="submit" class="btn btn-success fw-bold"
+                        onclick="return confirm('سيتوقف عدّاد SLA وتُرسل التذكرة لاعتماد مدير الاستقبال. متابعة؟');">
+                    ✔ تم حل المشكلة
+                </button>
+            </form>
+        </div>
+    }
+    else if (isMyTask && Model.Status == TicketStatus.PendingValidation)
+    {
+        <div class="alert alert-info mb-4">أرسلت الحل وهو الآن بانتظار اعتماد مدير الاستقبال.</div>
+    }
+
+    @* ---------- المرفقات ---------- *@
+    <h5 class="mb-3">المرفقات المرتبطة:</h5>
+    @if (Model.Attachments != null && Model.Attachments.Any())
+    {
+        <ul class="list-group mb-4">
+            @foreach (var attachment in Model.Attachments.OrderBy(a => a.UploadedAt))
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>
+                        @attachment.OriginalFileName
+                        <small class="text-muted"> — رفعه: @TicketText.Role(attachment.UploaderRole)، @attachment.UploadedAt.ToString("yyyy-MM-dd HH:mm")</small>
+                    </span>
+                    <a asp-action="Download" asp-route-id="@attachment.Id" target="_blank" class="btn btn-sm btn-outline-primary">تحميل / عرض</a>
+                </li>
+            }
+        </ul>
+    }
+    else
+    {
+        <p class="text-muted mb-4">لا توجد مرفقات لهذه التذكرة.</p>
+    }
+
+    @* ---------- المحادثة وسجل التذكرة ---------- *@
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">
+            @(isManager ? "المحادثات وسجل التذكرة (قناة الموظف وقناة الفني)" : "المحادثة مع مدير الاستقبال وسجل التذكرة")
+        </div>
+        <div class="card-body">
+            @if (!activities.Any())
+            {
+                <div class="text-muted">لا توجد أحداث أو تعليقات بعد.</div>
+            }
+
+            @foreach (var a in activities)
+            {
+                if (a.Kind == 1)
+                {
+                    var mine = string.Equals(a.ActorEmail, userEmail, StringComparison.OrdinalIgnoreCase);
+                    var ch = ChannelOf(a);
+                    <div class="mb-3 d-flex @(mine ? "justify-content-start" : "justify-content-end")">
+                        <div class="rounded p-2 px-3 @(mine ? "bg-primary text-white" : "bg-body-secondary")" style="max-width:80%;">
+                            <div class="small fw-bold">
+                                @TicketText.Role(a.ActorRole) — @a.ActorEmail
+                                @if (isManager)
+                                {
+                                    <span class="badge @(ch == "Technician" ? "bg-warning text-dark" : "bg-info text-dark") ms-1">@(ch == "Technician" ? "قناة الفني" : "قناة الموظف")</span>
+                                }
+                            </div>
+                            <div style="white-space:pre-wrap">@a.Text</div>
+                            <div class="small opacity-75">@a.CreatedAt.ToString("yyyy-MM-dd HH:mm")</div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center text-muted small my-2">
+                        ● @a.Text
+                        @if (a.Channel == "Internal" && isManager)
+                        {
+                            <span class="badge bg-secondary">داخلي</span>
+                        }
+                        <span class="opacity-75">— @TicketText.Role(a.ActorRole) @a.ActorEmail، @a.CreatedAt.ToString("yyyy-MM-dd HH:mm")</span>
+                    </div>
+                }
+            }
+
+            <hr />
+            <form asp-action="AddComment" method="post">
+                <input type="hidden" name="id" value="@Model.Id" />
+
+                @if (isManager)
+                {
+                    <div class="mb-2" style="max-width:260px;">
+                        <label class="form-label small mb-1">إرسال إلى</label>
+                        <select name="channel" class="form-select form-select-sm">
+                            <option value="Employee">الموظف (قناة الموظف)</option>
+                            <option value="Technician" disabled="@string.IsNullOrEmpty(Model.AssignedEngineerId)">الفني (قناة الفني)</option>
+                        </select>
+                    </div>
+                }
+
+                <textarea name="message" class="form-control mb-2" rows="2" maxlength="1000" placeholder="اكتب تعليقاً أو استفساراً على التذكرة..." required></textarea>
+                <button type="submit" class="btn btn-primary btn-sm">إرسال التعليق</button>
+                @if (isEmployee)
+                {
+                    <span class="text-muted small ms-2">يصل تعليقك إلى مدير الاستقبال ومدير النظام.</span>
+                }
+                else if (role == "Technician")
+                {
+                    <span class="text-muted small ms-2">يصل تعليقك إلى مدير الاستقبال ومدير النظام.</span>
+                }
+            </form>
+        </div>
+    </div>
+
+    <a asp-action="Index" class="btn btn-secondary mb-4">العودة إلى قائمة التذاكر</a>
+    <a asp-action="PrintTicket" asp-route-id="@Model.Id" target="_blank" class="btn btn-outline-danger mb-4">🖨️ تقرير التذكرة PDF / طباعة</a>
+</div>

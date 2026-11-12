@@ -1,0 +1,181 @@
+﻿@model Itsm.Models.Project
+@using Itsm.Models
+@{
+    ViewData["Title"] = "تعديل اتفاقية مستوى الخدمة";
+    var levels = ViewBag.Levels as List<ProjectSla> ?? new List<ProjectSla>();
+
+    string Bg(RiskLevel l) => l switch
+    {
+        RiskLevel.Critical => "#e4261a",
+        RiskLevel.High => "#f28b82",
+        RiskLevel.Medium => "#cfe6f7",
+        _ => "#cfe8c6"
+    };
+    string Fg(RiskLevel l) => l == RiskLevel.Critical ? "#ffffff" : "#1f2d26";
+}
+
+<div dir="rtl">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">تعديل اتفاقية مستوى الخدمة</h3>
+        <a asp-action="Sla" asp-route-id="@Model.Id" class="btn btn-secondary btn-sm">إلغاء</a>
+    </div>
+
+    <div class="alert alert-light border">
+        المشروع: <strong>@Model.ProjectNumber — @Model.Name</strong> (@Model.Organization?.Name).
+        <ul class="mb-0 mt-2">
+            <li>مستويات التأثير الأربعة <strong>ثابتة</strong> ولا تُعدَّل، ويُعدَّل وصفها وأزمنتها فقط.</li>
+            <li>اكتب الوصف بالعربية وبالإنجليزية (كل بند في سطر)، وزر الترجمة التلقائية يملأ اللغة الأخرى من اللغة التي كتبتها.</li>
+            <li>اختر وحدة الزمن لكل خانة: دقيقة أو ساعة أو يوم.</li>
+        </ul>
+    </div>
+
+    <form asp-action="SaveSla" asp-route-id="@Model.Id" method="post" id="slaForm">
+        @for (int i = 0; i < levels.Count; i++)
+        {
+            var s = levels[i];
+            <div class="card shadow-sm mb-3">
+                <div class="card-header fw-bold" style="background:@Bg(s.Level);color:@Fg(s.Level);">
+                    @SlaDefaults.LevelAr(s.Level) — @SlaDefaults.LevelEn(s.Level)
+                </div>
+                <div class="card-body">
+                    <input type="hidden" name="rows[@i].Level" value="@((int)s.Level)" />
+
+                    <div class="row g-3">
+                        <div class="col-lg-6">
+                            <label class="form-label">الوصف بالعربية (كل بند في سطر)</label>
+                            <textarea name="rows[@i].Description" class="form-control desc-ar" rows="7" maxlength="2000" dir="rtl">@s.Description</textarea>
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-1 tr-btn" data-from="ar" data-to="en">ترجمة إلى الإنجليزية ⟶</button>
+                        </div>
+                        <div class="col-lg-6">
+                            <label class="form-label">Description in English (one item per line)</label>
+                            <textarea name="rows[@i].DescriptionEn" class="form-control desc-en" rows="7" maxlength="2000" dir="ltr">@s.DescriptionEn</textarea>
+                            <button type="button" class="btn btn-outline-primary btn-sm mt-1 tr-btn" data-from="en" data-to="ar">⟵ ترجمة إلى العربية</button>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label">زمن الاستجابة (من إخطار العميل)</label>
+                            <div class="time-group" data-minutes="@s.ResponseMinutes">
+                                <div class="input-group">
+                                    <input type="number" step="any" min="0" class="form-control time-val" required />
+                                    <select class="form-select time-unit" style="max-width:120px;">
+                                        <option value="1">دقيقة</option>
+                                        <option value="60">ساعة</option>
+                                        <option value="1440">يوم</option>
+                                    </select>
+                                </div>
+                                <input type="hidden" name="rows[@i].ResponseMinutes" class="time-min" value="@s.ResponseMinutes" />
+                                <div class="form-text time-preview"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">زمن الحل (من وقت الاستجابة الأولية)</label>
+                            <div class="time-group" data-minutes="@s.ResolutionMinutes">
+                                <div class="input-group">
+                                    <input type="number" step="any" min="0" class="form-control time-val" required />
+                                    <select class="form-select time-unit" style="max-width:120px;">
+                                        <option value="1">دقيقة</option>
+                                        <option value="60">ساعة</option>
+                                        <option value="1440">يوم</option>
+                                    </select>
+                                </div>
+                                <input type="hidden" name="rows[@i].ResolutionMinutes" class="time-min" value="@s.ResolutionMinutes" />
+                                <div class="form-text time-preview"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <button type="submit" class="btn btn-success">حفظ الاتفاقية</button>
+        <a asp-action="Sla" asp-route-id="@Model.Id" class="btn btn-secondary">إلغاء</a>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        (function() {
+            // ---------- الأزمنة: قيمة + وحدة ← دقائق ----------
+            function dur(m) {
+                m = Number(m);
+                if (!m || m < 1) { return '—'; }
+                if (m % 1440 === 0) {
+                    var d = m / 1440;
+                    return d === 1 ? 'يوم واحد' : d === 2 ? 'يومان' : d <= 10 ? d + ' أيام' : d + ' يوماً';
+                }
+                if (m < 60) { return m + ' دقيقة'; }
+                var h = Math.floor(m / 60), r = m % 60;
+                var hs = h === 1 ? 'ساعة واحدة' : h === 2 ? 'ساعتان' : h <= 10 ? h + ' ساعات' : h + ' ساعة';
+                return r === 0 ? hs : hs + ' و' + r + ' دقيقة';
+            }
+
+            document.querySelectorAll('.time-group').forEach(function(g) {
+                var val = g.querySelector('.time-val');
+                var unit = g.querySelector('.time-unit');
+                var hidden = g.querySelector('.time-min');
+                var preview = g.querySelector('.time-preview');
+
+                var m = Number(g.getAttribute('data-minutes')) || 1;
+                var u = (m % 1440 === 0) ? 1440 : (m % 60 === 0) ? 60 : 1;
+                unit.value = String(u);
+                val.value = m / u;
+
+                function sync() {
+                    var minutes = Math.round(Number(val.value) * Number(unit.value));
+                    hidden.value = minutes > 0 ? minutes : '';
+                    preview.textContent = minutes > 0 ? 'يعادل: ' + dur(minutes) : '';
+                }
+
+                val.addEventListener('input', sync);
+                unit.addEventListener('change', sync);
+                sync();
+            });
+
+            // ---------- الترجمة التلقائية ----------
+            var token = document.querySelector('input[name="__RequestVerificationToken"]');
+
+            document.querySelectorAll('.tr-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var card = btn.closest('.card-body');
+                    var from = btn.getAttribute('data-from');
+                    var to = btn.getAttribute('data-to');
+                    var src = card.querySelector(from === 'ar' ? '.desc-ar' : '.desc-en');
+                    var dst = card.querySelector(to === 'ar' ? '.desc-ar' : '.desc-en');
+
+                    if (!src.value.trim()) {
+                        alert('اكتب النص أولاً ثم اضغط الترجمة.');
+                        return;
+                    }
+
+                    var old = btn.textContent;
+                    btn.disabled = true;
+                    btn.textContent = 'جارٍ الترجمة...';
+
+                    fetch('@Url.Action("Translate", "Projects")', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'RequestVerificationToken': token ? token.value : ''
+                        },
+                        body: JSON.stringify({ text: src.value, from: from, to: to })
+                    })
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            if (d.ok) { dst.value = d.text; }
+                            else { alert(d.message || 'تعذّرت الترجمة.'); }
+                        })
+                        .catch(function() { alert('تعذّر الاتصال بالخادم.'); })
+                        .then(function() { btn.disabled = false; btn.textContent = old; });
+                });
+            });
+
+            document.getElementById('slaForm').addEventListener('submit', function() {
+                document.querySelectorAll('.time-group').forEach(function(g) {
+                    var val = g.querySelector('.time-val');
+                    var unit = g.querySelector('.time-unit');
+                    g.querySelector('.time-min').value = Math.round(Number(val.value) * Number(unit.value));
+                });
+            });
+        })();
+    </script>
+}

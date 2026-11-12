@@ -1,0 +1,236 @@
+﻿@{
+    ViewData["Title"] = "لوحة التحكم";
+    var role = Context.Session.GetString("UserRole");
+    var email = Context.Session.GetString("UserEmail");
+
+    int closed = ViewBag.Closed;
+    int open = ViewBag.Open;
+    int rejected = ViewBag.Rejected;
+    int pending = ViewBag.Pending;
+
+    int total = closed + open;
+    int donePct = total == 0 ? 0 : (int)Math.Round(closed * 100.0 / total);
+    int openPct = total == 0 ? 0 : 100 - donePct;
+
+    int slaPct = ViewBag.SlaPct;
+    int onTime = ViewBag.OnTime;
+    int lateClosed = ViewBag.LateClosed;
+    double avgHours = ViewBag.AvgHours;
+    int lateActive = ViewBag.LateActive;
+
+    var statusCounts = (int[])ViewBag.StatusCounts;
+    var monthLabels = (string[])ViewBag.MonthLabels;
+    var monthCounts = (int[])ViewBag.MonthCounts;
+
+    string slaColor = (onTime + lateClosed) == 0 ? "text-muted" : slaPct >= 90 ? "text-success" : slaPct >= 70 ? "text-warning" : "text-danger";
+
+    string roleName = role switch
+    {
+        "Employee" => "موظف",
+        "Technician" => "فني / مهندس",
+        "Vendor" => "مدير الاستقبال",
+        "Admin" => "مدير النظام",
+        _ => role ?? ""
+    };
+
+    string J<T>(T value) => System.Text.Json.JsonSerializer.Serialize(value);
+}
+
+<div dir="rtl">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h3 class="mb-0">لوحة التحكم</h3>
+            <div class="text-muted">@email — @roleName</div>
+        </div>
+        <div class="bg-dark text-white rounded px-4 py-2 text-center">
+            <div id="clockDate" class="small"></div>
+            <div id="clockTime" class="fs-4 fw-bold text-warning" dir="ltr"></div>
+        </div>
+    </div>
+
+    @if (role == "Vendor" && pending > 0)
+    {
+        <div class="alert alert-warning">
+            بانتظار قرارك: <strong>@pending</strong> تذكرة. افتح «قائمة التذاكر» من القائمة الجانبية.
+        </div>
+    }
+
+    @* ---------- المنجزة وغير المنجزة ---------- *@
+    <div class="row g-3 mb-3">
+        <div class="col-md-6">
+            <div class="card border-success shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted">نسبة المهام المنجزة</div>
+                    <div class="display-4 fw-bold text-success">@donePct%</div>
+                    <div class="progress my-2">
+                        <div class="progress-bar bg-success" style="width:@donePct%"></div>
+                    </div>
+                    <div>عدد المنجزة: <strong>@closed</strong></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-warning shadow-sm h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted">نسبة المهام غير المنجزة</div>
+                    <div class="display-4 fw-bold text-warning">@openPct%</div>
+                    <div class="progress my-2">
+                        <div class="progress-bar bg-warning" style="width:@openPct%"></div>
+                    </div>
+                    <div>عدد غير المنجزة: <strong>@open</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- مؤشرات الأداء ---------- *@
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="card text-center shadow-sm h-100">
+                <div class="card-body">
+                    <div class="fs-2 fw-bold @slaColor">@((onTime + lateClosed) == 0 ? "—" : slaPct + "%")</div>
+                    <div class="text-muted small">الالتزام بمهلة SLA (للمغلقة)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card text-center shadow-sm h-100">
+                <div class="card-body">
+                    <div class="fs-2 fw-bold">@(avgHours == 0 ? "—" : avgHours.ToString("0.#") + " س")</div>
+                    <div class="text-muted small">متوسط زمن الحل</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card text-center shadow-sm h-100">
+                <div class="card-body">
+                    <div class="fs-2 fw-bold @(lateActive > 0 ? "text-danger" : "text-success")">@lateActive</div>
+                    <div class="text-muted small">تذاكر نشطة متأخرة عن SLA</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card text-center shadow-sm h-100">
+                <div class="card-body">
+                    <div class="fs-2 fw-bold text-danger">@rejected</div>
+                    <div class="text-muted small">تذاكر مرفوضة</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- الرسوم البيانية ---------- *@
+    <div class="row g-3 mb-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-bold">توزيع التذاكر حسب الحالة</div>
+                <div class="card-body">
+                    <div style="height:260px;position:relative;"><canvas id="statusChart"></canvas></div>
+                    <div id="statusEmpty" class="text-muted text-center d-none py-5">لا توجد تذاكر بعد.</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header fw-bold">الالتزام بمهلة SLA (التذاكر المغلقة)</div>
+                <div class="card-body">
+                    <div style="height:260px;position:relative;"><canvas id="slaChart"></canvas></div>
+                    <div id="slaEmpty" class="text-muted text-center d-none py-5">لا توجد تذاكر مغلقة بعد.</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header fw-bold">التذاكر المُنشأة في آخر 6 أشهر</div>
+                <div class="card-body">
+                    <div style="height:280px;position:relative;"><canvas id="monthChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-light border">
+        لعرض جدول التذاكر اضغط على «قائمة التذاكر» من القائمة الجانبية.
+    </div>
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        var T = window.__tr || function (s) { return s; };
+
+        // الساعة والتاريخ بتحديث مستمر
+        function tick() {
+            var now = new Date();
+            document.getElementById('clockDate').textContent =
+                now.toLocaleDateString(window.__lang === 'en' ? 'en-GB' : 'ar-SA-u-ca-gregory-nu-latn', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            document.getElementById('clockTime').textContent = now.toLocaleTimeString('en-GB');
+        }
+        tick();
+        setInterval(tick, 1000);
+
+        // الرسوم البيانية
+        (function () {
+            if (typeof Chart === 'undefined') {
+                document.querySelectorAll('canvas').forEach(function (c) {
+                    c.parentElement.innerHTML = '<div class="text-muted text-center py-5">تعذّر تحميل مكتبة الرسوم (تحقق من الاتصال بالإنترنت).</div>';
+                });
+                return;
+            }
+
+            var cs = getComputedStyle(document.body);
+            Chart.defaults.color = cs.color;
+            Chart.defaults.font.family = cs.fontFamily;
+            Chart.defaults.borderColor = 'rgba(128,128,128,0.25)';
+
+            var statusLabels = ['بانتظار الموافقة', 'موجّهة للفني', 'قيد المعالجة', 'مغلقة', 'مرفوضة'].map(T);
+            var statusColors = ['#6c757d', '#0d6efd', '#0dcaf0', '#198754', '#dc3545'];
+            var statusData = @Html.Raw(J(statusCounts));
+
+            var slaData = [@onTime, @lateClosed];
+
+            var monthLabels = @(Html.Raw(J(monthLabels))).map(T);
+            var monthData = @Html.Raw(J(monthCounts));
+
+            var isEn = window.__lang === 'en';
+            var legend = { position: 'bottom', rtl: !isEn, textDirection: isEn ? 'ltr' : 'rtl' };
+
+            function sum(a) { return a.reduce(function (x, y) { return x + y; }, 0); }
+
+            // توزيع الحالات
+            if (sum(statusData) === 0) {
+                document.getElementById('statusChart').parentElement.classList.add('d-none');
+                document.getElementById('statusEmpty').classList.remove('d-none');
+            } else {
+                new Chart(document.getElementById('statusChart'), {
+                    type: 'doughnut',
+                    data: { labels: statusLabels, datasets: [{ data: statusData, backgroundColor: statusColors, borderWidth: 0 }] },
+                    options: { maintainAspectRatio: false, cutout: '60%', plugins: { legend: legend } }
+                });
+            }
+
+            // الالتزام بـ SLA
+            if (sum(slaData) === 0) {
+                document.getElementById('slaChart').parentElement.classList.add('d-none');
+                document.getElementById('slaEmpty').classList.remove('d-none');
+            } else {
+                new Chart(document.getElementById('slaChart'), {
+                    type: 'doughnut',
+                    data: { labels: ['ضمن المهلة', 'متأخرة'].map(T), datasets: [{ data: slaData, backgroundColor: ['#198754', '#dc3545'], borderWidth: 0 }] },
+                    options: { maintainAspectRatio: false, cutout: '60%', plugins: { legend: legend } }
+                });
+            }
+
+            // التذاكر شهرياً
+            new Chart(document.getElementById('monthChart'), {
+                type: 'bar',
+                data: { labels: monthLabels, datasets: [{ label: T('عدد التذاكر'), data: monthData, backgroundColor: '#0d6efd', borderRadius: 6 }] },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+        })();
+    </script>
+}

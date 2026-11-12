@@ -1,0 +1,677 @@
+﻿@inject Itsm.Models.ApplicationDbContext Db
+@using Itsm.Models
+@using Microsoft.EntityFrameworkCore
+@{
+    var userEmail = Context.Session.GetString("UserEmail");
+    var userRole = Context.Session.GetString("UserRole");
+    var loggedIn = !string.IsNullOrEmpty(userEmail);
+    var orgName = Context.Session.GetString("OrgName");
+    var orgLogo = Context.Session.GetString("OrgLogo");
+    var initial = loggedIn ? userEmail!.Substring(0, 1).ToUpperInvariant() : "";
+
+    var ctrl = ViewContext.RouteData.Values["controller"]?.ToString();
+    var act = ViewContext.RouteData.Values["action"]?.ToString();
+    string Active(string c, string a) => (ctrl == c && act == a) ? "active" : "";
+
+    string roleName = userRole switch
+    {
+        "Employee" => "موظف",
+        "Technician" => "فني / مهندس",
+        "Vendor" => "مدير الاستقبال",
+        "Admin" => "مدير النظام",
+        _ => userRole ?? ""
+    };
+
+    // أرقام التنبيه بجانب القائمة الجانبية
+    int pendingCount = 0, myActiveCount = 0, toRateCount = 0;
+    int unreadCount = 0;
+    var recentNotes = new List<Notification>();
+    if (loggedIn)
+    {
+        unreadCount = await Db.Notifications.CountAsync(n => n.UserEmail == userEmail && !n.IsRead);
+        recentNotes = await Db.Notifications
+            .Where(n => n.UserEmail == userEmail)
+            .OrderByDescending(n => n.CreatedAt)
+            .Take(6)
+            .ToListAsync();
+
+        if (userRole == "Vendor")
+        {
+            pendingCount = await Db.Tickets.CountAsync(t => t.Status == TicketStatus.PendingApproval
+                || t.Status == TicketStatus.PendingValidation);
+        }
+        else if (userRole == "Technician")
+        {
+            myActiveCount = await Db.Tickets.CountAsync(t => t.AssignedEngineerId == userEmail
+                && (t.Status == TicketStatus.Approved || t.Status == TicketStatus.InProgress));
+        }
+
+        // عدد الفنيين بانتظار تقييمي في الدورة الحالية (إن كان التقييم متاحاً لفئتي)
+        if (userRole == "Employee" || userRole == "Vendor")
+        {
+            var ratingKey = userRole == "Employee" ? SettingKeys.RatingEmployees : SettingKeys.RatingManagers;
+            var ratingEnabled = await Db.AppSettings.AnyAsync(s => s.Key == ratingKey && s.Value == "true");
+            if (ratingEnabled)
+            {
+                var periodSetting = await Db.AppSettings.FindAsync(SettingKeys.RatingPeriodMonths);
+                var periodKey = RatingPeriod.Key(RatingPeriod.NormalizeMonths(periodSetting?.Value), DateTime.Now);
+                var (pStart, pEnd) = RatingPeriod.Range(periodKey);
+
+                var evaluated = await Db.TechnicianEvaluations
+                    .Where(e => e.EvaluatorEmail == userEmail && e.PeriodKey == periodKey)
+                    .Select(e => e.TechnicianEmail)
+                    .ToListAsync();
+
+                if (userRole == "Vendor")
+                {
+                    toRateCount = await Db.Users.CountAsync(u => u.Role == "Technician" && u.IsActive && !evaluated.Contains(u.Email));
+                }
+                else
+                {
+                    var served = await Db.Tickets
+                        .Where(t => t.EmployeeId == userEmail && t.Status == TicketStatus.Closed
+                                    && t.AssignedEngineerId != "" && t.ClosedAt >= pStart && t.ClosedAt < pEnd)
+                        .Select(t => t.AssignedEngineerId)
+                        .Distinct()
+                        .ToListAsync();
+                    toRateCount = served.Count(x => !evaluated.Contains(x, StringComparer.OrdinalIgnoreCase));
+                }
+            }
+        }
+    }
+}
+<!DOCTYPE html>
+<html lang="ar" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <script src="~/js/i18n.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Itsm</title>
+    <script>
+            // تطبيق الوضع المحفوظ (فاتح / ليلي) قبل رسم الصفحة
+            try { var th = localStorage.getItem('theme'); if (th) document.documentElement.setAttribute('data-bs-theme', th); } catch (e) { }
+    </script>
+    <script type="importmap"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Itsm.styles.css" asp-append-version="true" />
+    <style>
+            :root {
+                --green-dark: #0f3b28;
+                --green-mid: #1a5a3c;
+                --beige: #f4ecdc;
+                --beige-deep: #eadfc6;
+                --gold: #f5c518;
+            }
+
+            body {
+                font-family: 'Tajawal', 'Segoe UI', Tahoma, sans-serif;
+            }
+
+            /* ---------- الألوان العامة: الوضع الفاتح (بيج) ---------- */
+            [data-bs-theme="light"] {
+                --bs-body-bg: #f4ecdc;
+                --bs-body-bg-rgb: 244, 236, 220;
+                --bs-body-color: #1f2d26;
+                --bs-body-color-rgb: 31, 45, 38;
+                --bs-secondary-bg: #eadfc6;
+                --bs-secondary-bg-rgb: 234, 223, 198;
+                --bs-tertiary-bg: #f0e7d3;
+                --bs-tertiary-bg-rgb: 240, 231, 211;
+                --bs-border-color: rgba(15, 59, 40, .16);
+                --bs-link-color-rgb: 26, 90, 60;
+                --bs-link-hover-color-rgb: 15, 59, 40;
+                --surface: #fffdf7;
+            }
+
+            [data-bs-theme="dark"] {
+                --bs-body-bg: #0e1713;
+                --bs-body-bg-rgb: 14, 23, 19;
+                --surface: #16241d;
+            }
+
+            /* ---------- الشريط العلوي: أخضر غامق بلمعة ---------- */
+            .app-topbar {
+                position: relative;
+                z-index: 1040;
+                padding: 8px 16px;
+                background: linear-gradient(135deg, var(--green-mid) 0%, var(--green-dark) 100%);
+                border-bottom: 2px solid rgba(245, 197, 24, .55);
+                box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 4px 14px rgba(0, 0, 0, .18);
+            }
+
+                .app-topbar::after {
+                    content: "";
+                    position: absolute;
+                    inset: 0;
+                    background: linear-gradient(115deg, rgba(255, 255, 255, .17) 0%, rgba(255, 255, 255, .05) 28%, rgba(255, 255, 255, 0) 46%);
+                    pointer-events: none;
+                }
+
+                .app-topbar > * {
+                    position: relative;
+                    z-index: 1;
+                }
+
+            /* شعار جهة الموظف بجانب شعار شبه الجزيرة */
+            .org-sep {
+                width: 1px;
+                height: 34px;
+                background: rgba(255, 255, 255, .4);
+            }
+
+            .org-badge {
+                display: flex;
+                align-items: center;
+                height: 46px;
+                padding: 4px 12px;
+                border-radius: 12px;
+                background: #fff;
+                color: var(--green-dark);
+                font-weight: 700;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, .18);
+            }
+
+                .org-badge img {
+                    max-height: 38px;
+                    max-width: 150px;
+                }
+
+            /* ---------- القائمة الجانبية: أخضر غامق ---------- */
+            .app-shell {
+                display: flex;
+                min-height: calc(100vh - 68px);
+            }
+
+            .app-sidebar {
+                width: 264px;
+                flex-shrink: 0;
+                padding: 1rem .9rem 5rem;
+                color: #fff;
+                background: linear-gradient(180deg, var(--green-mid) 0%, var(--green-dark) 100%);
+                box-shadow: inset -1px 0 0 rgba(255, 255, 255, .08);
+            }
+
+            .side-user {
+                display: flex;
+                align-items: center;
+                gap: .75rem;
+                padding: .75rem;
+                margin-bottom: 1rem;
+                border-radius: 16px;
+                background: rgba(255, 255, 255, .09);
+            }
+
+            .side-avatar {
+                width: 42px;
+                height: 42px;
+                flex-shrink: 0;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 800;
+                font-size: 1.15rem;
+                color: var(--green-dark);
+                background: var(--gold);
+            }
+
+            .side-user .who {
+                min-width: 0;
+            }
+
+            .side-user .name {
+                font-weight: 700;
+                font-size: .85rem;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                direction: ltr;
+                text-align: right;
+            }
+
+            .side-user .role {
+                font-size: .78rem;
+                color: rgba(255, 255, 255, .72);
+            }
+
+            .side-label {
+                font-size: .74rem;
+                letter-spacing: .3px;
+                color: rgba(255, 255, 255, .5);
+                padding: .9rem .85rem .35rem;
+            }
+
+            .side-link {
+                position: relative;
+                display: flex;
+                align-items: center;
+                gap: .65rem;
+                padding: .72rem .85rem;
+                color: rgba(255, 255, 255, .9);
+                text-decoration: none;
+                border-bottom: 1px solid rgba(255, 255, 255, .1);
+                transition: background .15s;
+            }
+
+                .side-link .icon {
+                    width: 1.5rem;
+                    text-align: center;
+                }
+
+                .side-link .txt {
+                    flex: 1;
+                }
+
+                .side-link:hover {
+                    background: rgba(255, 255, 255, .09);
+                    color: #fff;
+                }
+
+                .side-link.active {
+                    color: #fff;
+                    font-weight: 700;
+                    border-radius: 12px;
+                    border-bottom-color: transparent;
+                    background: rgba(255, 255, 255, .16);
+                }
+
+                    .side-link.active::before {
+                        content: "";
+                        position: absolute;
+                        right: 0;
+                        top: 22%;
+                        bottom: 22%;
+                        width: 4px;
+                        border-radius: 4px;
+                        background: var(--gold);
+                    }
+
+            .side-backdrop {
+                display: none;
+            }
+
+            /* ---------- شاشات صغيرة: القائمة تنزلق من اليمين ---------- */
+            @@media (max-width: 991.98px) {
+                .app-sidebar {
+                    position: fixed;
+                    top: 0;
+                    bottom: 0;
+                    right: 0;
+                    z-index: 1050;
+                    overflow-y: auto;
+                    transform: translateX(100%);
+                    transition: transform .25s ease;
+                }
+
+                    .app-sidebar.open {
+                        transform: translateX(0);
+                    }
+
+                .side-backdrop.show {
+                    display: block;
+                    position: fixed;
+                    inset: 0;
+                    z-index: 1045;
+                    background: rgba(0, 0, 0, .45);
+                }
+            }
+
+            /* ---------- محتوى الصفحات ---------- */
+            .card {
+                --bs-card-bg: var(--surface);
+                --bs-card-border-color: var(--bs-border-color);
+                border-radius: 18px;
+                box-shadow: 0 6px 18px rgba(15, 59, 40, .07);
+            }
+
+            .card-header {
+                border-radius: 18px 18px 0 0 !important;
+                background: rgba(15, 59, 40, .06);
+            }
+
+            .table {
+                --bs-table-bg: var(--surface);
+            }
+
+            .table-striped > tbody > tr:nth-of-type(odd) > * {
+                --bs-table-bg-type: rgba(15, 59, 40, .045);
+            }
+
+            .table-dark {
+                --bs-table-bg: var(--green-dark);
+                --bs-table-color: #fff;
+                --bs-table-border-color: rgba(255, 255, 255, .15);
+            }
+
+            .table-light {
+                --bs-table-bg: var(--beige-deep);
+            }
+
+            .table-responsive {
+                border-radius: 14px;
+            }
+
+            .form-control, .form-select {
+                background-color: var(--surface);
+                border-radius: 12px;
+            }
+
+            .btn {
+                border-radius: 12px;
+            }
+
+            .alert {
+                border-radius: 14px;
+            }
+
+            .dropdown-menu {
+                --bs-dropdown-bg: var(--surface);
+                border-radius: 14px;
+                overflow: hidden;
+            }
+
+            .list-group {
+                --bs-list-group-bg: var(--surface);
+                border-radius: 14px;
+            }
+
+            .bg-dark {
+                background: linear-gradient(160deg, var(--green-mid), var(--green-dark)) !important;
+            }
+
+            .btn-primary {
+                --bs-btn-bg: var(--green-mid);
+                --bs-btn-border-color: var(--green-mid);
+                --bs-btn-hover-bg: var(--green-dark);
+                --bs-btn-hover-border-color: var(--green-dark);
+                --bs-btn-active-bg: var(--green-dark);
+                --bs-btn-active-border-color: var(--green-dark);
+                --bs-btn-disabled-bg: var(--green-mid);
+                --bs-btn-disabled-border-color: var(--green-mid);
+            }
+
+            .btn-outline-primary {
+                --bs-btn-color: var(--green-mid);
+                --bs-btn-border-color: var(--green-mid);
+                --bs-btn-hover-bg: var(--green-mid);
+                --bs-btn-hover-border-color: var(--green-mid);
+                --bs-btn-active-bg: var(--green-dark);
+                --bs-btn-active-border-color: var(--green-dark);
+            }
+
+            .btn-dark {
+                --bs-btn-bg: var(--green-dark);
+                --bs-btn-border-color: var(--green-dark);
+                --bs-btn-hover-bg: var(--green-mid);
+                --bs-btn-hover-border-color: var(--green-mid);
+                --bs-btn-active-bg: var(--green-mid);
+                --bs-btn-active-border-color: var(--green-mid);
+            }
+
+            .page-item.active .page-link {
+                background-color: var(--green-mid);
+                border-color: var(--green-mid);
+                color: #fff;
+            }
+
+            .page-link {
+                color: var(--green-mid);
+            }
+
+            .footer {
+                background: transparent;
+            }
+
+            /* ---------- الوضع الإنجليزي: الاتجاه من اليسار إلى اليمين ---------- */
+            html.lang-en .side-link.active::before {
+                right: auto;
+                left: 0;
+            }
+
+            @@media (max-width: 991.98px) {
+                html.lang-en .app-sidebar {
+                    right: auto;
+                    left: 0;
+                    transform: translateX(-100%);
+                }
+
+                    html.lang-en .app-sidebar.open {
+                        transform: translateX(0);
+                    }
+            }
+    </style>
+</head>
+<body>
+    <header class="app-topbar d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+            @if (loggedIn)
+            {
+                <button type="button" id="sideToggle" class="btn btn-outline-light btn-sm d-lg-none" aria-label="القائمة">☰</button>
+            }
+            <a class="navbar-brand p-0 m-0" asp-controller="Home" asp-action="Dashboard">
+                <img src="~/images/SitcoLogo.png" alt="SITCO" height="46" />
+            </a>
+            @if (loggedIn && !string.IsNullOrEmpty(orgName))
+            {
+                <span class="org-sep"></span>
+                <span class="org-badge" title="@orgName">
+                    @if (!string.IsNullOrEmpty(orgLogo))
+                    {
+                        <img src="~/images/orgs/@orgLogo" alt="@orgName" />
+                    }
+                    else
+                    {
+                        <span>@orgName</span>
+                    }
+                </span>
+            }
+        </div>
+
+        <div class="d-flex align-items-center gap-2 gap-md-3">
+            @if (loggedIn)
+            {
+                <span class="text-white fw-bold d-none d-md-inline">مرحباً: @userEmail (@roleName)</span>
+
+                <div class="dropdown">
+                    <button class="btn btn-outline-light btn-sm position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="الإشعارات">
+                        🔔
+                        <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger @(unreadCount > 0 ? "" : "d-none")">@(unreadCount > 99 ? "99+" : unreadCount.ToString())</span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end p-0" style="width:340px;max-width:92vw;" dir="rtl">
+                        <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
+                            <strong>الإشعارات</strong>
+                            @if (unreadCount > 0)
+                            {
+                                <form asp-controller="Notifications" asp-action="MarkAllRead" method="post" class="m-0">
+                                    <button type="submit" class="btn btn-link btn-sm p-0">تحديد الكل كمقروء</button>
+                                </form>
+                            }
+                        </div>
+                        @if (!recentNotes.Any())
+                        {
+                            <div class="text-muted text-center py-4 small">لا توجد إشعارات.</div>
+                        }
+                        @foreach (var n in recentNotes)
+                        {
+                            <a class="dropdown-item d-block px-3 py-2 border-bottom @(n.IsRead ? "" : "bg-body-secondary fw-bold")" style="white-space:normal;"
+                               asp-controller="Notifications" asp-action="Open" asp-route-id="@n.Id">
+                                <div class="small">@n.Message</div>
+                                <div class="text-muted" style="font-size:.75rem;">@n.CreatedAt.ToString("yyyy-MM-dd HH:mm")</div>
+                            </a>
+                        }
+                        <a class="dropdown-item text-center small py-2" asp-controller="Notifications" asp-action="Index">عرض كل الإشعارات</a>
+                    </div>
+                </div>
+            }
+
+            <button type="button" id="langBtn" class="btn btn-outline-light btn-sm fw-bold" onclick="toggleLang()" title="Language / اللغة">English</button>
+
+            <button type="button" id="themeBtn" class="btn btn-outline-light btn-sm" title="الوضع الليلي">🌓</button>
+
+            @if (loggedIn)
+            {
+                <form asp-controller="Account" asp-action="Logout" method="post" class="m-0">
+                    <button type="submit" class="btn btn-danger btn-sm">تسجيل خروج</button>
+                </form>
+            }
+            else if (ctrl != "Account")
+            {
+                <a class="btn btn-success btn-sm" asp-controller="Account" asp-action="Login">تسجيل دخول</a>
+            }
+        </div>
+    </header>
+
+    <div class="app-shell" dir="@(loggedIn ? "rtl" : "ltr")">
+        @if (loggedIn)
+        {
+            <div id="sideBackdrop" class="side-backdrop"></div>
+            <aside id="sidebar" class="app-sidebar">
+                <div class="d-flex justify-content-end d-lg-none mb-2">
+                    <button type="button" id="sideClose" class="btn btn-outline-light btn-sm" aria-label="إغلاق">✕</button>
+                </div>
+
+                <div class="side-user">
+                    <div class="side-avatar">@initial</div>
+                    <div class="who">
+                        <div class="name">@userEmail</div>
+                        <div class="role">@roleName</div>
+                    </div>
+                </div>
+
+                <div class="side-label">القائمة الرئيسية</div>
+                <nav>
+                    <a class="side-link @Active("Home", "Dashboard")" asp-controller="Home" asp-action="Dashboard">
+                        <span class="icon">📊</span><span class="txt">لوحة التحكم</span>
+                    </a>
+
+                    <a class="side-link @Active("Tickets", "Index")" asp-controller="Tickets" asp-action="Index">
+                        <span class="icon">📋</span><span class="txt">قائمة التذاكر</span>
+                        @if (pendingCount > 0)
+                        {
+                            <span class="badge bg-warning text-dark" title="بانتظار قرارك">@pendingCount</span>
+                        }
+                        @if (myActiveCount > 0)
+                        {
+                            <span class="badge bg-warning text-dark" title="مهامك النشطة">@myActiveCount</span>
+                        }
+                    </a>
+
+                    @if (userRole == "Employee")
+                    {
+                        <a class="side-link @Active("Tickets", "Create")" asp-controller="Tickets" asp-action="Create">
+                            <span class="icon">➕</span><span class="txt">إنشاء تذكرة</span>
+                        </a>
+                    }
+
+                    <a class="side-link @Active("Ratings", "Index")" asp-controller="Ratings" asp-action="Index">
+                        <span class="icon">⭐</span><span class="txt">@(userRole == "Employee" || userRole == "Vendor" ? "تقييم الفنيين" : "تقييمات الفنيين")</span>
+                        @if (toRateCount > 0)
+                        {
+                            <span class="badge bg-warning text-dark" title="بانتظار تقييمك">@toRateCount</span>
+                        }
+                    </a>
+
+                    <a class="side-link @Active("Projects", "Agreements")" asp-controller="Projects" asp-action="Agreements">
+                        <span class="icon">📜</span><span class="txt">اتفاقيات مستوى الخدمة</span>
+                    </a>
+                </nav>
+
+                @if (userRole == "Admin")
+                {
+                    <div class="side-label">الإدارة</div>
+                    <nav>
+                        <a class="side-link @Active("Users", "Index")" asp-controller="Users" asp-action="Index">
+                            <span class="icon">👥</span><span class="txt">إدارة المستخدمين</span>
+                        </a>
+                        <a class="side-link @Active("Organizations", "Index")" asp-controller="Organizations" asp-action="Index">
+                            <span class="icon">🏢</span><span class="txt">إدارة العملاء</span>
+                        </a>
+                        <a class="side-link @Active("Projects", "Index")" asp-controller="Projects" asp-action="Index">
+                            <span class="icon">📁</span><span class="txt">إدارة المشاريع</span>
+                        </a>
+                    </nav>
+                }
+
+                <div class="side-label">المزيد</div>
+                <nav>
+                    <a class="side-link @Active("Home", "Index")" asp-controller="Home" asp-action="Index">
+                        <span class="icon">📞</span><span class="txt">تواصل معنا</span>
+                    </a>
+                    <a class="side-link @Active("Home", "Privacy")" asp-controller="Home" asp-action="Privacy">
+                        <span class="icon">🔐</span><span class="txt">الأدوار والصلاحيات</span>
+                    </a>
+                    <a class="side-link @Active("Account", "ChangePassword")" asp-controller="Account" asp-action="ChangePassword">
+                        <span class="icon">🔑</span><span class="txt">تغيير كلمة المرور</span>
+                    </a>
+                </nav>
+            </aside>
+        }
+
+        <main role="main" class="flex-grow-1 p-3 p-lg-4 @(loggedIn ? "" : "container")" style="min-width:0;">
+            @if (TempData["Success"] is string okMsg)
+            {
+                <div class="alert alert-success" dir="rtl">@okMsg</div>
+            }
+            @if (TempData["Error"] is string errMsg)
+            {
+                <div class="alert alert-danger" dir="rtl">@errMsg</div>
+            }
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2026 - شبه الجزيرة لتقنية نظم المعلومات (SITCO)
+        </div>
+    </footer>
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script>
+            // الوضع الليلي
+            document.getElementById('themeBtn').addEventListener('click', function () {
+                var el = document.documentElement;
+                var next = el.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+                el.setAttribute('data-bs-theme', next);
+                try { localStorage.setItem('theme', next); } catch (e) { }
+            });
+
+            // القائمة الجانبية على الشاشات الصغيرة
+            (function () {
+                var side = document.getElementById('sidebar');
+                var back = document.getElementById('sideBackdrop');
+                var open = document.getElementById('sideToggle');
+                var close = document.getElementById('sideClose');
+                if (!side) { return; }
+                function setOpen(v) {
+                    side.classList.toggle('open', v);
+                    back.classList.toggle('show', v);
+                }
+                if (open) { open.addEventListener('click', function () { setOpen(true); }); }
+                if (close) { close.addEventListener('click', function () { setOpen(false); }); }
+                back.addEventListener('click', function () { setOpen(false); });
+            })();
+
+            // تحديث رقم الجرس كل 30 ثانية
+            (function () {
+                var badge = document.getElementById('notifBadge');
+                if (!badge) { return; }
+                setInterval(function () {
+                    fetch('/Notifications/Count')
+                        .then(function (r) { return r.ok ? r.json() : null; })
+                        .then(function (d) {
+                            if (!d) { return; }
+                            badge.textContent = d.count > 99 ? '99+' : d.count;
+                            badge.classList.toggle('d-none', d.count === 0);
+                        })
+                        .catch(function () { });
+                }, 30000);
+            })();
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

@@ -1,0 +1,202 @@
+﻿@model Itsm.Models.Project
+@using Itsm.Models
+@{
+    ViewData["Title"] = "اتفاقية مستوى الخدمة";
+    var levels = ViewBag.Levels as List<ProjectSla> ?? new List<ProjectSla>();
+    bool canEdit = ViewBag.CanEdit is true;
+
+    string Bg(RiskLevel l) => l switch
+    {
+        RiskLevel.Critical => "#e4261a",
+        RiskLevel.High => "#f28b82",
+        RiskLevel.Medium => "#cfe6f7",
+        _ => "#cfe8c6"
+    };
+    string Fg(RiskLevel l) => l == RiskLevel.Critical ? "#ffffff" : "#1f2d26";
+    string UnitText(string u) => u == "Days" ? "يوم" : "شهر";
+
+    string[] Lines(string text) => (text ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+}
+
+<style>
+    .sla-table th, .sla-table td {
+        vertical-align: middle;
+    }
+
+    .sla-level {
+        font-weight: 800;
+        text-align: center;
+        min-width: 120px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .sla-desc ul {
+        margin: 0;
+        padding-inline-start: 1.1rem;
+    }
+
+    .sla-desc li {
+        margin-bottom: .25rem;
+    }
+
+    /* تبديل لغة الجدول */
+    #slaWrap[data-lang="ar"] .en-only {
+        display: none !important;
+    }
+
+    #slaWrap[data-lang="en"] .ar-only {
+        display: none !important;
+    }
+
+    @@media print {
+        .app-topbar, .app-sidebar, .side-backdrop, .no-print, footer {
+            display: none !important;
+        }
+
+        .app-shell {
+            display: block !important;
+        }
+    }
+</style>
+
+<div dir="rtl">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h3 class="mb-0">اتفاقية مستوى الخدمة</h3>
+        <div class="d-flex gap-2 no-print">
+            <button type="button" id="langBtn" class="btn btn-warning btn-sm fw-bold">🌐 English</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">🖨️ طباعة</button>
+            @if (canEdit)
+            {
+                <a asp-action="SlaEdit" asp-route-id="@Model.Id" class="btn btn-primary btn-sm">✏️ تعديل الاتفاقية</a>
+            }
+            <a asp-action="Agreements" class="btn btn-secondary btn-sm">العودة</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <div class="text-muted small">رقم المشروع</div>
+                    <strong>@Model.ProjectNumber</strong>
+                </div>
+                <div class="col-md-5">
+                    <div class="text-muted small">اسم المشروع</div>
+                    <strong>@Model.Name</strong>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-muted small">العميل</div>
+                    <strong>@Model.Organization?.Name</strong>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-muted small">تاريخ البداية</div>
+                    @Model.StartDate.ToString("yyyy-MM-dd")
+                </div>
+                <div class="col-md-4">
+                    <div class="text-muted small">المدة</div>
+                    @Model.DurationValue @UnitText(Model.DurationUnit)
+                </div>
+                <div class="col-md-4">
+                    <div class="text-muted small">تاريخ النهاية</div>
+                    @Model.EndDate.ToString("yyyy-MM-dd")
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="slaWrap" data-lang="ar" dir="rtl">
+        <div class="table-responsive">
+            <table class="table table-bordered sla-table">
+                <thead class="table-dark text-center">
+                    <tr>
+                        <th><span class="ar-only">مستوى التأثير</span><span class="en-only">Impact Level</span></th>
+                        <th><span class="ar-only">الوصف</span><span class="en-only">Description</span></th>
+                        <th><span class="ar-only">زمن الاستجابة</span><span class="en-only">Response Time</span></th>
+                        <th><span class="ar-only">زمن الحل</span><span class="en-only">Resolution Time</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var s in levels)
+                    {
+                        var arLines = Lines(string.IsNullOrWhiteSpace(s.Description) ? s.DescriptionEn : s.Description);
+                        var enLines = Lines(string.IsNullOrWhiteSpace(s.DescriptionEn) ? s.Description : s.DescriptionEn);
+                        <tr>
+                            @* مستوى التأثير ثابت بالعربية والإنجليزية دائماً *@
+                            <td class="sla-level" style="background:@Bg(s.Level);color:@Fg(s.Level);">
+                                <div class="fs-5">@SlaDefaults.LevelAr(s.Level)</div>
+                                <div class="small">@SlaDefaults.LevelEn(s.Level)</div>
+                            </td>
+                            <td class="sla-desc">
+                                <div class="ar-only" dir="rtl">
+                                    <ul>
+                                        @foreach (var line in arLines)
+                                        {
+                                            <li>@line.Trim()</li>
+                                        }
+                                    </ul>
+                                </div>
+                                <div class="en-only" dir="ltr">
+                                    <ul>
+                                        @foreach (var line in enLines)
+                                        {
+                                            <li>@line.Trim()</li>
+                                        }
+                                    </ul>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="ar-only">
+                                    خلال <strong>@SlaDefaults.Duration(s.ResponseMinutes)</strong><br />
+                                    <span class="small text-muted">من إخطار العميل</span>
+                                </div>
+                                <div class="en-only">
+                                    Within <strong>@SlaDefaults.DurationEn(s.ResponseMinutes)</strong><br />
+                                    <span class="small text-muted">of client notification</span>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="ar-only">
+                                    <strong>@SlaDefaults.Duration(s.ResolutionMinutes)</strong><br />
+                                    <span class="small text-muted">من وقت الاستجابة الأولية</span>
+                                </div>
+                                <div class="en-only">
+                                    <strong>@SlaDefaults.DurationEn(s.ResolutionMinutes)</strong><br />
+                                    <span class="small text-muted">from initial response</span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="text-muted small">
+            <span class="ar-only">يحدد مدير الاستقبال مستوى التأثير عند قبول التذكرة، ويبدأ عدّاد SLA للفني وفق زمن الحل المذكور لهذا المستوى في اتفاقية هذا المشروع.</span>
+            <span class="en-only">The reception manager sets the impact level when accepting the ticket, and the technician's SLA counter starts according to the resolution time of that level in this project's agreement.</span>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var wrap = document.getElementById('slaWrap');
+            var btn = document.getElementById('langBtn');
+
+            function apply(lang) {
+                wrap.setAttribute('data-lang', lang);
+                wrap.setAttribute('dir', lang === 'en' ? 'ltr' : 'rtl');
+                btn.textContent = lang === 'en' ? '🌐 العربية' : '🌐 English';
+                try { localStorage.setItem('slaLang', lang); } catch (e) { }
+            }
+
+            btn.addEventListener('click', function () {
+                apply(wrap.getAttribute('data-lang') === 'ar' ? 'en' : 'ar');
+            });
+
+            // الجدول يتبع لغة الموقع عند فتح الصفحة (ويمكن تبديله بالزر)
+            apply(window.__lang === 'en' ? 'en' : 'ar');
+        })();
+    </script>
+}

@@ -1,0 +1,65 @@
+﻿@model List<Itsm.Controllers.BulkUserResult>
+@{
+    ViewData["Title"] = "نتيجة إضافة الموظفين";
+    string orgName = ViewBag.OrgName as string ?? "";
+    var created = Model.Count(r => r.Created);
+}
+
+<div dir="rtl">
+    <h3 class="mb-2">نتيجة إضافة موظفي «@orgName»</h3>
+
+    @if (created > 0)
+    {
+        <div class="alert alert-warning">
+            <strong>انتبه:</strong> كلمات المرور في الجدول أدناه <strong>تظهر هذه المرة فقط</strong> ولا يمكن استرجاعها لاحقاً.
+            انسخها أو اطبع الصفحة وسلّمها لأصحابها الآن، وننصح كل موظف بتغييرها من «تغيير كلمة المرور» بعد أول دخول.
+        </div>
+    }
+
+    <div class="table-responsive">
+        <table class="table table-bordered align-middle text-center">
+            <thead class="table-dark">
+                <tr>
+                    <th>البريد الإلكتروني</th>
+                    <th>الاسم</th>
+                    <th>كلمة المرور المؤقتة</th>
+                    <th>النتيجة</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var r in Model)
+                {
+                    <tr>
+                        <td class="text-start" dir="ltr">@r.Email</td>
+                        <td>@r.Name</td>
+                        <td>
+                            @if (r.Created)
+                            {
+                                <code class="fs-6" dir="ltr">@r.Password</code>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td>
+                            @if (r.Created)
+                            {
+                                <span class="badge bg-success">@r.Status</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-danger">@r.Status</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-primary" onclick="window.print()">🖨️ طباعة</button>
+        <a asp-action="Index" class="btn btn-secondary">العودة إلى إدارة المستخدمين</a>
+    </div>
+</div>

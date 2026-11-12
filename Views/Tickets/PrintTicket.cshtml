@@ -1,0 +1,197 @@
+﻿@model Itsm.Models.Ticket
+@using Itsm.Models
+@{
+    Layout = null;
+    var user = Context.Session.GetString("UserEmail");
+    var role = Context.Session.GetString("UserRole");
+    var activities = ViewBag.Activities as List<TicketActivity> ?? new List<TicketActivity>();
+}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>تقرير التذكرة رقم @Model.Id</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <style>
+            body {
+                background: #fff;
+                color: #000;
+                font-size: 13px;
+            }
+
+            .band {
+                background: #2f3031;
+                color: #fff;
+                padding: 8px 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .sec-title {
+                background: #e9ecef;
+                padding: 4px 10px;
+                font-weight: bold;
+                border-right: 4px solid #2f3031;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .sign {
+                border-top: 1px solid #000;
+                margin-top: 50px;
+                padding-top: 4px;
+                text-align: center;
+            }
+
+            @@page {
+                size: A4 portrait;
+                margin: 12mm;
+            }
+
+            @@media print {
+                .no-print {
+                    display: none !important;
+                }
+            }
+    </style>
+    <script src="~/js/i18n.js"></script>
+</head>
+<body>
+    <div class="no-print bg-light border-bottom p-2 text-center">
+        <button class="btn btn-primary btn-sm" onclick="window.print()">🖨️ طباعة / حفظ كـ PDF</button>
+        <button class="btn btn-outline-secondary btn-sm" onclick="window.close()">إغلاق</button>
+        <span class="text-muted small ms-2">في نافذة الطباعة اختر الوجهة «Save as PDF» أو «حفظ كـ PDF».</span>
+    </div>
+
+    <div class="band">
+        <img src="~/images/SitcoLogo.png" alt="SITCO" height="44" />
+        <div class="text-center">
+            <div class="fs-5 fw-bold">تقرير التذكرة رقم @Model.Id</div>
+            <div class="small">@TicketText.Status(Model.Status)</div>
+        </div>
+        <div class="small text-start">
+            <div>@DateTime.Now.ToString("yyyy-MM-dd HH:mm")</div>
+            <div>@user — @TicketText.Role(role)</div>
+        </div>
+    </div>
+
+    <div class="container-fluid mt-3">
+        <div class="sec-title mb-2">بيانات التذكرة</div>
+        <table class="table table-bordered table-sm mb-3">
+            <tr><th style="width:22%">العنوان</th><td colspan="3">@Model.Title</td></tr>
+            <tr><th>الوصف</th><td colspan="3" style="white-space:pre-wrap">@Model.Description</td></tr>
+            <tr>
+                <th>الموظف</th>
+                <td>@Model.EmployeeId</td>
+                <th style="width:22%">الفني المسؤول</th>
+                <td>@(string.IsNullOrEmpty(Model.AssignedEngineerId) ? "—" : Model.AssignedEngineerId)</td>
+            </tr>
+            <tr>
+                <th>الخطورة</th>
+                <td>@TicketText.Risk(Model.Risk)</td>
+                <th>الحالة</th>
+                <td>@TicketText.Status(Model.Status)</td>
+            </tr>
+            <tr>
+                <th>تاريخ الإنشاء</th>
+                <td>@Model.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                <th>نتيجة SLA</th>
+                <td>@TicketText.SlaResult(Model)</td>
+            </tr>
+            <tr>
+                <th>بدء عداد SLA</th>
+                <td>@(Model.SlaStartTime.HasValue && Model.Status != TicketStatus.PendingApproval ? Model.SlaStartTime.Value.ToString("yyyy-MM-dd HH:mm") : "—")</td>
+                <th>الموعد النهائي</th>
+                <td>@(Model.SlaDeadline.HasValue && Model.Status != TicketStatus.PendingApproval ? Model.SlaDeadline.Value.ToString("yyyy-MM-dd HH:mm") : "—")</td>
+            </tr>
+            @if (Model.Status == TicketStatus.Closed)
+            {
+                <tr>
+                    <th>إيقاف عداد SLA</th>
+                    <td>@((Model.SlaStoppedAt ?? Model.ClosedAt)?.ToString("yyyy-MM-dd HH:mm"))</td>
+                    <th>تاريخ الإغلاق</th>
+                    <td>@(Model.ClosedAt?.ToString("yyyy-MM-dd HH:mm"))</td>
+                </tr>
+            }
+        </table>
+
+        @if (Model.Status == TicketStatus.Rejected && !string.IsNullOrWhiteSpace(Model.RejectionReason))
+        {
+            <div class="sec-title mb-2">سبب الرفض</div>
+            <p style="white-space:pre-wrap">@Model.RejectionReason</p>
+        }
+
+        @if (Model.Status == TicketStatus.Closed)
+        {
+            <div class="sec-title mb-2">تقرير الفني</div>
+            <table class="table table-bordered table-sm mb-3">
+                <tr><th style="width:22%">الحل</th><td style="white-space:pre-wrap">@Model.Solution</td></tr>
+                <tr><th>ملاحظات الفني</th><td style="white-space:pre-wrap">@(string.IsNullOrWhiteSpace(Model.TechnicianNotes) ? "—" : Model.TechnicianNotes)</td></tr>
+            </table>
+        }
+
+        @if (Model.Rating != null)
+        {
+            <div class="sec-title mb-2">تقييم الفني</div>
+            <table class="table table-bordered table-sm mb-3">
+                <tr><th style="width:22%">التقييم</th><td>@TicketText.Stars(Model.Rating) (@Model.Rating من 5)</td></tr>
+                <tr><th>المقيِّم</th><td>@Model.ReviewerName</td></tr>
+                @if (!string.IsNullOrWhiteSpace(Model.RatingComment))
+                {
+                    <tr><th>التعليق</th><td style="white-space:pre-wrap">@Model.RatingComment</td></tr>
+                }
+            </table>
+        }
+
+        <div class="sec-title mb-2">المرفقات</div>
+        @if (Model.Attachments != null && Model.Attachments.Any())
+        {
+            <ul class="mb-3">
+                @foreach (var a in Model.Attachments.OrderBy(x => x.UploadedAt))
+                {
+                    <li>@a.OriginalFileName — @TicketText.Role(a.UploaderRole)، @a.UploadedAt.ToString("yyyy-MM-dd HH:mm")</li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="text-muted">لا توجد مرفقات.</p>
+        }
+
+        <div class="sec-title mb-2">سجل التذكرة والمحادثة</div>
+        @if (!activities.Any())
+        {
+            <p class="text-muted">لا توجد أحداث مسجّلة.</p>
+        }
+        else
+        {
+            <table class="table table-bordered table-sm mb-3">
+                <thead>
+                    <tr><th style="width:18%">الوقت</th><th style="width:25%">المنفّذ</th><th style="width:10%">النوع</th><th>التفاصيل</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in activities)
+                    {
+                        <tr>
+                            <td>@a.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@TicketText.Role(a.ActorRole) — @a.ActorEmail</td>
+                            <td>@(a.Kind == 1 ? "تعليق" : "حدث")</td>
+                            <td style="white-space:pre-wrap">@a.Text</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <div class="row mt-4">
+            <div class="col-4"><div class="sign">الفني المختص</div></div>
+            <div class="col-4"><div class="sign">المورّد / المدير</div></div>
+            <div class="col-4"><div class="sign">الموظف مقدّم الطلب</div></div>
+        </div>
+    </div>
+</body>
+</html>

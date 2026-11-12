@@ -1,0 +1,170 @@
+﻿@model IEnumerable<Itsm.Models.Project>
+@{
+    ViewData["Title"] = "إدارة المشاريع";
+    var orgs = ViewBag.Orgs as List<Itsm.Models.Organization> ?? new List<Itsm.Models.Organization>();
+    var today = DateTime.Today;
+    string UnitText(string u) => u == "Days" ? "يوم" : "شهر";
+}
+
+<div dir="rtl">
+    <h3 class="mb-3">إدارة المشاريع</h3>
+    <p class="text-muted">يختار الموظف عند إنشاء التذكرة مشروعاً من مشاريع عميله. يُحسب تاريخ نهاية المشروع تلقائياً من تاريخ البداية والمدة.</p>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">إضافة مشروع جديد</div>
+        <div class="card-body">
+            @if (!orgs.Any())
+            {
+                <div class="text-muted">أضف عميلاً أولاً من «إدارة العملاء».</div>
+            }
+            else
+            {
+                <form asp-action="Create" method="post" class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label">رقم المشروع</label>
+                        <input type="text" name="projectNumber" class="form-control" required maxlength="50" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">اسم المشروع</label>
+                        <input type="text" name="name" class="form-control" required maxlength="300" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">العميل</label>
+                        <select name="organizationId" class="form-select" required>
+                            @foreach (var o in orgs)
+                            {
+                                <option value="@o.Id">@o.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">تاريخ البداية</label>
+                        <input type="date" name="startDate" id="startDate" class="form-control" required />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">المدة</label>
+                        <input type="number" name="durationValue" id="durationValue" class="form-control" min="1" required />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">الوحدة</label>
+                        <select name="durationUnit" id="durationUnit" class="form-select">
+                            <option value="Months">أشهر</option>
+                            <option value="Days">أيام</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">تاريخ النهاية (يُحسب تلقائياً)</label>
+                        <input type="text" id="endPreview" class="form-control" readonly placeholder="—" />
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success w-100">إضافة</button>
+                    </div>
+                </form>
+            }
+        </div>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="text-muted text-center py-4">لا توجد مشاريع بعد.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle text-center">
+                <thead class="table-dark">
+                    <tr>
+                        <th>الرقم</th>
+                        <th>اسم المشروع</th>
+                        <th>العميل</th>
+                        <th>البداية</th>
+                        <th>المدة</th>
+                        <th>النهاية</th>
+                        <th>الحالة</th>
+                        <th>إجراء</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in Model)
+                    {
+                        <tr>
+                            <td>@p.ProjectNumber</td>
+                            <td class="text-start">@p.Name</td>
+                            <td>@(p.Organization?.Name)</td>
+                            <td>@p.StartDate.ToString("yyyy-MM-dd")</td>
+                            <td>@p.DurationValue @UnitText(p.DurationUnit)</td>
+                            <td>@p.EndDate.ToString("yyyy-MM-dd")</td>
+                            <td>
+                                @if (!p.IsActive)
+                                {
+                                    <span class="badge bg-secondary">موقوف</span>
+                                }
+                                else if (p.EndDate < today)
+                                {
+                                    <span class="badge bg-dark">منتهٍ</span>
+                                }
+                                else if (p.StartDate > today)
+                                {
+                                    <span class="badge bg-info text-dark">لم يبدأ</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">جارٍ</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1 justify-content-center">
+                                    <a asp-action="Edit" asp-route-id="@p.Id" class="btn btn-outline-primary btn-sm">تعديل</a>
+                                    <a asp-action="Sla" asp-route-id="@p.Id" class="btn btn-outline-secondary btn-sm">اتفاقية SLA</a>
+                                    <form asp-action="SetActive" method="post" class="m-0">
+                                        <input type="hidden" name="id" value="@p.Id" />
+                                        <input type="hidden" name="active" value="@(p.IsActive ? "false" : "true")" />
+                                        @if (p.IsActive)
+                                        {
+                                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                    onclick="return confirm('إيقاف هذا المشروع؟ لن يظهر للموظفين عند إنشاء التذاكر.');">
+                                                إيقاف
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="submit" class="btn btn-outline-success btn-sm">تفعيل</button>
+                                        }
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            var sd = document.getElementById('startDate');
+            var dv = document.getElementById('durationValue');
+            var un = document.getElementById('durationUnit');
+            var ep = document.getElementById('endPreview');
+            if (!sd) { return; }
+
+            function calc() {
+                if (!sd.value || !dv.value || Number(dv.value) < 1) { ep.value = ''; return; }
+                var url = '@Url.Action("CalcEnd", "Projects")' +
+                    '?start=' + encodeURIComponent(sd.value) +
+                    '&value=' + encodeURIComponent(dv.value) +
+                    '&unit=' + encodeURIComponent(un.value);
+                fetch(url)
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { ep.value = d.end || ''; })
+                    .catch(function () { ep.value = ''; });
+            }
+
+            sd.addEventListener('change', calc);
+            dv.addEventListener('input', calc);
+            un.addEventListener('change', calc);
+        })();
+    </script>
+}

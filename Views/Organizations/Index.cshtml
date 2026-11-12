@@ -1,0 +1,127 @@
+﻿@model IEnumerable<Itsm.Models.Organization>
+@{
+    ViewData["Title"] = "إدارة العملاء";
+    var counts = ViewBag.Counts as Dictionary<int, int> ?? new Dictionary<int, int>();
+    var projectCounts = ViewBag.ProjectCounts as Dictionary<int, int> ?? new Dictionary<int, int>();
+}
+
+<div dir="rtl">
+    <h3 class="mb-3">إدارة العملاء</h3>
+    <p class="text-muted">العميل هو الجهة طالبة الخدمة. عند دخول موظفيه يظهر شعاره بجانب شعار شبه الجزيرة في الشريط العلوي.</p>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">إضافة عميل جديد</div>
+        <div class="card-body">
+            <form asp-action="Create" method="post" enctype="multipart/form-data" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">اسم الجهة</label>
+                    <input type="text" name="name" class="form-control" required maxlength="200" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">المدينة</label>
+                    <input type="text" name="city" class="form-control" maxlength="100" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">العنوان</label>
+                    <input type="text" name="address" class="form-control" maxlength="300" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">الشعار (PNG أو JPG أو WEBP، حتى 2 ميجابايت)</label>
+                    <input type="file" name="logo" class="form-control" accept=".png,.jpg,.jpeg,.webp" />
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-success w-100">إضافة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="text-muted text-center py-4">لا يوجد عملاء بعد. أضف أول عميل من النموذج أعلاه.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle text-center">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width:140px">الشعار</th>
+                        <th>الجهة</th>
+                        <th>المدينة</th>
+                        <th>العنوان</th>
+                        <th>الموظفون</th>
+                        <th>المشاريع</th>
+                        <th>الحالة</th>
+                        <th>تعديل</th>
+                        <th>إجراء</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in Model)
+                    {
+                        <tr>
+                            <td>
+                                @if (!string.IsNullOrEmpty(o.LogoFileName))
+                                {
+                                    <div class="d-inline-block bg-white rounded p-2 border">
+                                        <img src="~/images/orgs/@o.LogoFileName" alt="@o.Name" style="max-height:48px;max-width:110px;" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">بدون شعار</span>
+                                }
+                            </td>
+                            <td class="fw-bold">@o.Name</td>
+                            <td>@(string.IsNullOrEmpty(o.City) ? "—" : o.City)</td>
+                            <td class="small">@(string.IsNullOrEmpty(o.Address) ? "—" : o.Address)</td>
+                            <td>@(counts.TryGetValue(o.Id, out var n) ? n : 0)</td>
+                            <td>@(projectCounts.TryGetValue(o.Id, out var pc) ? pc : 0)</td>
+                            <td>
+                                @if (o.IsActive)
+                                {
+                                    <span class="badge bg-success">نشط</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">موقوف</span>
+                                }
+                            </td>
+                            <td style="min-width:190px">
+                                <details>
+                                    <summary class="btn btn-outline-primary btn-sm">تعديل</summary>
+                                    <form asp-action="Update" method="post" enctype="multipart/form-data" class="mt-2 text-start">
+                                        <input type="hidden" name="id" value="@o.Id" />
+                                        <input type="text" name="name" value="@o.Name" class="form-control form-control-sm mb-1" placeholder="اسم الجهة" required maxlength="200" />
+                                        <input type="text" name="city" value="@o.City" class="form-control form-control-sm mb-1" placeholder="المدينة" maxlength="100" />
+                                        <input type="text" name="address" value="@o.Address" class="form-control form-control-sm mb-1" placeholder="العنوان" maxlength="300" />
+                                        <input type="file" name="logo" class="form-control form-control-sm mb-1" accept=".png,.jpg,.jpeg,.webp" />
+                                        <button type="submit" class="btn btn-success btn-sm w-100">حفظ</button>
+                                    </form>
+                                </details>
+                            </td>
+                            <td>
+                                <form asp-action="SetActive" method="post" class="m-0">
+                                    <input type="hidden" name="id" value="@o.Id" />
+                                    <input type="hidden" name="active" value="@(o.IsActive ? "false" : "true")" />
+                                    @if (o.IsActive)
+                                    {
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                onclick="return confirm('إيقاف هذا العميل؟ لن يستطيع موظفوه الدخول.');">
+                                            إيقاف
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button type="submit" class="btn btn-outline-success btn-sm">تفعيل</button>
+                                    }
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

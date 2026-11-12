@@ -1,0 +1,189 @@
+﻿@model IEnumerable<Itsm.Models.AppUser>
+@{
+    ViewData["Title"] = "إدارة المستخدمين";
+    var me = Context.Session.GetString("UserEmail");
+    var orgs = ViewBag.Orgs as List<Itsm.Models.Organization> ?? new List<Itsm.Models.Organization>();
+
+    string RoleText(string r) => r switch
+    {
+        "Employee" => "موظف",
+        "Technician" => "فني / مهندس",
+        "Vendor" => "مدير الاستقبال",
+        "Admin" => "مدير النظام",
+        _ => r
+    };
+}
+
+<div dir="rtl">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">إدارة المستخدمين</h3>
+        <a asp-controller="Organizations" asp-action="Index" class="btn btn-outline-primary btn-sm">🏢 إدارة الجهات وشعاراتها</a>
+    </div>
+
+    @* ---------- إضافة مجموعة موظفين لجهة ---------- *@
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">إضافة موظفي جهة دفعة واحدة</div>
+        <div class="card-body">
+            @if (!orgs.Any())
+            {
+                <div class="text-muted">أضف جهة أولاً من «إدارة الجهات وشعاراتها».</div>
+            }
+            else
+            {
+                <form asp-action="BulkCreate" method="post" class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">الجهة</label>
+                        <select name="organizationId" class="form-select" required>
+                            @foreach (var o in orgs)
+                            {
+                                <option value="@o.Id">@o.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">البريد الإلكتروني للموظفين (بريد في كل سطر، ويمكن كتابة الاسم بعده بعد فاصلة)</label>
+                        <textarea name="emails" class="form-control" rows="4" required
+                                  placeholder="ahmed@company.com, أحمد محمد&#10;sara@company.com, سارة علي"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-success">إضافة وتوليد كلمات المرور</button>
+                        <span class="text-muted small ms-2">تُولَّد لكل موظف كلمة مرور عشوائية قوية تظهر لك مرة واحدة فقط.</span>
+                    </div>
+                </form>
+            }
+        </div>
+    </div>
+
+    @* ---------- إضافة مستخدم واحد ---------- *@
+    <div class="card shadow-sm mb-4">
+        <div class="card-header fw-bold">إضافة مستخدم جديد</div>
+        <div class="card-body">
+            <form asp-action="Create" method="post" class="row g-2">
+                <div class="col-md-3">
+                    <input type="email" name="email" class="form-control" placeholder="البريد الإلكتروني" required autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                    <input type="text" name="fullName" class="form-control" placeholder="الاسم (اختياري)" autocomplete="off" />
+                </div>
+                <div class="col-md-2">
+                    <select name="role" class="form-select" required>
+                        <option value="Employee">موظف</option>
+                        <option value="Technician">فني / مهندس</option>
+                        <option value="Vendor">مدير الاستقبال</option>
+                        <option value="Admin">مدير النظام</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <select name="organizationId" class="form-select">
+                        <option value="">بدون جهة</option>
+                        @foreach (var o in orgs)
+                        {
+                            <option value="@o.Id">@o.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="password" name="password" class="form-control" placeholder="كلمة المرور" required autocomplete="new-password" />
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-success w-100">إضافة</button>
+                </div>
+            </form>
+            <div class="form-text mt-1">كلمة المرور: 8 أحرف على الأقل، وتحتوي على حرف ورقم. والجهة تُحتسب للموظفين فقط.</div>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped align-middle text-center">
+            <thead class="table-dark">
+                <tr>
+                    <th>البريد</th>
+                    <th>الاسم</th>
+                    <th>الدور</th>
+                    <th>الجهة</th>
+                    <th>الحالة</th>
+                    <th>آخر دخول</th>
+                    <th>تغيير كلمة المرور</th>
+                    <th>إجراء</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in Model)
+                {
+                    var locked = u.LockoutUntil.HasValue && u.LockoutUntil.Value > DateTime.Now;
+                    <tr>
+                        <td class="text-start">@u.Email</td>
+                        <td>@u.FullName</td>
+                        <td>@RoleText(u.Role)</td>
+                        <td>
+                            @if (u.Role == "Employee")
+                            {
+                                <form asp-action="SetOrganization" method="post" class="d-flex gap-1 m-0">
+                                    <input type="hidden" name="id" value="@u.Id" />
+                                    <select name="organizationId" class="form-select form-select-sm" style="min-width:140px">
+                                        <option value="">بدون جهة</option>
+                                        @foreach (var o in orgs)
+                                        {
+                                            <option value="@o.Id" selected="@(u.OrganizationId == o.Id)">@o.Name</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">حفظ</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!u.IsActive)
+                            {
+                                <span class="badge bg-secondary">موقوف</span>
+                            }
+                            else if (locked)
+                            {
+                                <span class="badge bg-warning text-dark">مقفل مؤقتاً</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">نشط</span>
+                            }
+                        </td>
+                        <td class="small">@(u.LastLoginAt.HasValue ? u.LastLoginAt.Value.ToString("yyyy-MM-dd HH:mm") : "—")</td>
+                        <td>
+                            <form asp-action="ResetPassword" method="post" class="d-flex gap-1 m-0">
+                                <input type="hidden" name="id" value="@u.Id" />
+                                <input type="password" name="newPassword" class="form-control form-control-sm" placeholder="كلمة مرور جديدة" required autocomplete="new-password" />
+                                <button type="submit" class="btn btn-outline-primary btn-sm">حفظ</button>
+                            </form>
+                        </td>
+                        <td>
+                            @if (string.Equals(u.Email, me, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="text-muted small">حسابك</span>
+                            }
+                            else
+                            {
+                                <form asp-action="SetActive" method="post" class="m-0">
+                                    <input type="hidden" name="id" value="@u.Id" />
+                                    <input type="hidden" name="active" value="@(u.IsActive ? "false" : "true")" />
+                                    @if (u.IsActive)
+                                    {
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"
+                                                onclick="return confirm('إيقاف هذا الحساب؟ لن يستطيع الدخول.');">
+                                            إيقاف
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button type="submit" class="btn btn-outline-success btn-sm">تفعيل</button>
+                                    }
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

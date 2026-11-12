@@ -1,0 +1,341 @@
+﻿@{
+    Layout = null;
+    ViewData["Title"] = "تسجيل الدخول";
+    var postedEmail = Context.Request.Method == "POST" ? Context.Request.Form["email"].ToString() : "";
+}
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>تسجيل الدخول - ITSM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <style>
+            :root {
+                --green-dark: #0f3b28;
+                --green-mid: #1a5a3c;
+                --beige: #f4ecdc;
+                --beige-light: #fbf6ea;
+                --beige-deep: #eadfc6;
+                --gold: #f5c518;
+                --gold-hover: #e0b30d;
+            }
+
+            body {
+                font-family: 'Tajawal', 'Segoe UI', Tahoma, sans-serif;
+                background: var(--beige);
+                color: var(--green-dark);
+                margin: 0;
+            }
+
+            .top-band {
+                background: #2f3031;
+                padding: 6px 16px;
+                direction: ltr;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+
+            .hero {
+                position: relative;
+                overflow: hidden;
+                min-height: calc(100vh - 62px - 56px);
+                display: flex;
+                align-items: center;
+                background: radial-gradient(circle at 12% 18%, var(--beige-light) 0, transparent 45%), radial-gradient(circle at 88% 85%, var(--beige-deep) 0, transparent 42%), var(--beige);
+            }
+
+                .hero::before,
+                .hero::after {
+                    content: "";
+                    position: absolute;
+                    border-radius: 50%;
+                    background: rgba(15, 59, 40, 0.06);
+                    pointer-events: none;
+                }
+
+                .hero::before {
+                    width: 440px;
+                    height: 440px;
+                    top: -150px;
+                    right: -130px;
+                }
+
+                .hero::after {
+                    width: 340px;
+                    height: 340px;
+                    bottom: -130px;
+                    left: 34%;
+                }
+
+                .hero .container {
+                    position: relative;
+                    z-index: 1;
+                }
+
+            /* ---------- النص الترحيبي (يمين) ---------- */
+            .welcome-small {
+                font-size: 1.25rem;
+                font-weight: 500;
+                color: #6b5b3e;
+            }
+
+            .welcome-title {
+                font-size: 2.6rem;
+                font-weight: 800;
+                line-height: 1.5;
+                color: var(--green-dark);
+            }
+
+                .welcome-title .accent {
+                    color: #b8860b;
+                }
+
+            .welcome-en {
+                font-size: 1.05rem;
+                letter-spacing: .4px;
+                color: #6b5b3e;
+                direction: ltr;
+                text-align: right;
+                font-weight: 500;
+            }
+
+            .chips {
+                display: flex;
+                flex-wrap: wrap;
+                gap: .6rem;
+                margin-top: 1.6rem;
+            }
+
+            .chip {
+                background: rgba(15, 59, 40, .08);
+                color: var(--green-dark);
+                border-radius: 999px;
+                padding: .45rem 1rem;
+                font-weight: 500;
+                font-size: .95rem;
+            }
+
+            /* ---------- صندوق الدخول (يسار) ---------- */
+            .login-card {
+                width: 100%;
+                max-width: 560px;
+                padding: 3rem 2.75rem;
+                border-radius: 32px;
+                color: #fff;
+                background: linear-gradient(160deg, var(--green-mid) 0%, var(--green-dark) 100%);
+                box-shadow: 0 28px 60px rgba(15, 59, 40, .35);
+            }
+
+                .login-card h2 {
+                    font-weight: 800;
+                    font-size: 1.9rem;
+                }
+
+                .login-card .sub {
+                    color: rgba(255, 255, 255, .75);
+                }
+
+                .login-card label {
+                    font-weight: 500;
+                    margin-bottom: .45rem;
+                    color: #f6f1e4;
+                }
+
+                .login-card .form-control {
+                    height: 54px;
+                    border-radius: 16px;
+                    border: 2px solid transparent;
+                    background: #fffdf7;
+                    padding-inline: 1.1rem;
+                    font-size: 1rem;
+                }
+
+                    .login-card .form-control:focus {
+                        border-color: var(--gold);
+                        box-shadow: 0 0 0 .2rem rgba(245, 197, 24, .25);
+                    }
+
+            .btn-login {
+                height: 56px;
+                border: none;
+                border-radius: 16px;
+                font-weight: 800;
+                font-size: 1.1rem;
+                color: var(--green-dark);
+                background: var(--gold);
+                transition: background .15s, transform .1s;
+            }
+
+                .btn-login:hover {
+                    background: var(--gold-hover);
+                    color: var(--green-dark);
+                }
+
+                .btn-login:active {
+                    transform: scale(.99);
+                }
+
+            .toggle-pw {
+                position: absolute;
+                left: .6rem;
+                top: 50%;
+                transform: translateY(-50%);
+                border: none;
+                background: transparent;
+                font-size: 1.1rem;
+                line-height: 1;
+                opacity: .7;
+            }
+
+            .login-card .alert {
+                border-radius: 16px;
+                border: none;
+                background: rgba(220, 53, 69, .18);
+                color: #ffd9dd;
+            }
+
+            .login-footer {
+                color: rgba(255, 255, 255, .7);
+                font-size: .9rem;
+            }
+
+            .page-footer {
+                text-align: center;
+                padding: 16px;
+                color: #8a7a5a;
+                font-size: .9rem;
+                background: var(--beige);
+            }
+
+            @@media (max-width: 991px) {
+                .welcome-title {
+                    font-size: 1.9rem;
+                }
+
+                .login-card {
+                    padding: 2.2rem 1.6rem;
+                    border-radius: 26px;
+                }
+
+                .welcome-block {
+                    text-align: center;
+                }
+
+                .welcome-en {
+                    text-align: center;
+                }
+
+                .chips {
+                    justify-content: center;
+                }
+            }
+
+            /* ---------- الوضع الإنجليزي ---------- */
+            html.lang-en .welcome-en {
+                text-align: left;
+            }
+
+            html.lang-en .toggle-pw {
+                left: auto;
+                right: .6rem;
+            }
+
+            html.lang-en #password {
+                padding-left: .75rem !important;
+                padding-right: 3rem !important;
+            }
+
+            @@media (max-width: 991px) {
+                html.lang-en .welcome-en {
+                    text-align: center;
+                }
+            }
+    </style>
+    <script src="~/js/i18n.js"></script>
+</head>
+<body>
+    <div class="top-band">
+        <img src="~/images/SitcoLogo.png" alt="SITCO" height="46" />
+        <button type="button" id="langBtn" class="btn btn-outline-light btn-sm fw-bold" onclick="toggleLang()" title="Language / اللغة">English</button>
+    </div>
+
+    <section class="hero py-5">
+        <div class="container">
+            <div class="row align-items-center g-5">
+
+                @* ---------- اليمين: العبارة الترحيبية ---------- *@
+                <div class="col-lg-6 welcome-block">
+                    <div class="welcome-small mb-2">مرحباً بك في</div>
+                    <h1 class="welcome-title mb-3">
+                        نظام خدمات الدعم الفني<br />
+                        والصيانة المتكامل <span class="accent">ITSM</span>
+                    </h1>
+                    <div class="welcome-en">(Integrated Technical Support &amp; Maintenance System)</div>
+
+                    <div class="chips">
+                        <span class="chip">📋 إدارة التذاكر</span>
+                        <span class="chip">⏱️ متابعة مهلة SLA</span>
+                        <span class="chip">⭐ تقييم الخدمة</span>
+                    </div>
+                </div>
+
+                @* ---------- اليسار: صندوق تسجيل الدخول ---------- *@
+                <div class="col-lg-6 d-flex justify-content-center justify-content-lg-start">
+                    <div class="login-card">
+                        <h2 class="mb-1">تسجيل الدخول</h2>
+                        <div class="sub mb-4">أدخل بياناتك للمتابعة إلى حسابك</div>
+
+                        <form asp-action="Login" method="post">
+                            @if (!ViewData.ModelState.IsValid)
+                            {
+                                <div class="alert mb-3">
+                                    @foreach (var err in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+                                    {
+                                        <div>@err.ErrorMessage</div>
+                                    }
+                                </div>
+                            }
+
+                            <div class="mb-3">
+                                <label for="email">البريد الإلكتروني</label>
+                                <input type="email" id="email" name="email" value="@postedEmail" class="form-control" required autofocus
+                                       autocomplete="username" placeholder="example@itsm.com" />
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="password">كلمة المرور</label>
+                                <div class="position-relative">
+                                    <input type="password" id="password" name="password" class="form-control" required
+                                           autocomplete="current-password" placeholder="أدخل كلمة المرور الخاصة بالحساب"
+                                           style="padding-left:3rem;" />
+                                    <button type="button" id="togglePw" class="toggle-pw" aria-label="إظهار كلمة المرور" title="إظهار / إخفاء">👁️</button>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-login w-100">دخول للنظام</button>
+                        </form>
+
+                        <div class="login-footer text-center mt-4">
+                            نسيت كلمة المرور؟ تواصل مع مدير النظام.
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <div class="page-footer">&copy; 2026 - شبه الجزيرة لتقنية نظم المعلومات (SITCO)</div>
+
+    <script>
+            document.getElementById('togglePw').addEventListener('click', function () {
+                var input = document.getElementById('password');
+                input.type = input.type === 'password' ? 'text' : 'password';
+            });
+    </script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+﻿@model IEnumerable<Itsm.Models.Project>
+@{
+    ViewData["Title"] = "اتفاقيات مستوى الخدمة";
+    var role = Context.Session.GetString("UserRole");
+    var today = DateTime.Today;
+}
+
+<div dir="rtl">
+    <h3 class="mb-2">اتفاقيات مستوى الخدمة</h3>
+    <p class="text-muted">لكل مشروع اتفاقية خاصة تحدد، لكل مستوى تأثير، زمن الاستجابة وزمن الحل وجهة التصعيد.</p>
+
+    @if (!Model.Any())
+    {
+        <div class="text-muted text-center py-5">
+            @(role == "Employee" ? "لا توجد مشاريع مسجّلة لجهتك. تواصل مع مدير النظام." : "لا توجد مشاريع بعد.")
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-bordered table-striped align-middle text-center">
+                <thead class="table-dark">
+                    <tr>
+                        <th>رقم المشروع</th>
+                        <th>اسم المشروع</th>
+                        <th>العميل</th>
+                        <th>الفترة</th>
+                        <th>الحالة</th>
+                        <th>الاتفاقية</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in Model)
+                    {
+                        <tr>
+                            <td>@p.ProjectNumber</td>
+                            <td class="text-start">@p.Name</td>
+                            <td>@p.Organization?.Name</td>
+                            <td class="small">@p.StartDate.ToString("yyyy-MM-dd") ← @p.EndDate.ToString("yyyy-MM-dd")</td>
+                            <td>
+                                @if (!p.IsActive)
+                                {
+                                    <span class="badge bg-secondary">موقوف</span>
+                                }
+                                else if (p.EndDate < today)
+                                {
+                                    <span class="badge bg-dark">منتهٍ</span>
+                                }
+                                else if (p.StartDate > today)
+                                {
+                                    <span class="badge bg-info text-dark">لم يبدأ</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-success">جارٍ</span>
+                                }
+                            </td>
+                            <td>
+                                <a asp-action="Sla" asp-route-id="@p.Id" class="btn btn-primary btn-sm">📜 عرض الاتفاقية</a>
+                                @if (role == "Admin")
+                                {
+                                    <a asp-action="SlaEdit" asp-route-id="@p.Id" class="btn btn-outline-secondary btn-sm">تعديل</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
